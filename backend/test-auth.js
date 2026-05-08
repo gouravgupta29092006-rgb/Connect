@@ -2,6 +2,7 @@
 // Tests register → login → /me → unauthenticated /me → logout → /me (should 401)
 
 const http = require('http');
+const { BASE, TEST_USER } = require('./test-config');
 
 function request(options, body = null) {
   return new Promise((resolve, reject) => {
@@ -25,12 +26,10 @@ function request(options, body = null) {
 function extractCookie(headers) {
   const setCookie = headers['set-cookie'];
   if (!setCookie) return null;
-  // Get just the name=value part before the first semicolon
   return setCookie[0].split(';')[0];
 }
 
 async function runTests() {
-  const base = { hostname: 'localhost', port: 5000 };
   let cookie = null;
   let passed = 0;
   let failed = 0;
@@ -47,23 +46,17 @@ async function runTests() {
 
   // ── TEST 1: POST /api/test-db ──────────────────────────────────────────────
   console.log('\n[Step 1] POST /api/test-db');
-  const t1 = await request({ ...base, method: 'POST', path: '/api/test-db', headers: {} });
+  const t1 = await request({ ...BASE, method: 'POST', path: '/api/test-db', headers: {} });
   assert('Status 200', t1.status === 200, `got ${t1.status}`);
   assert('Has server_time', !!t1.body.server_time);
 
   // ── TEST 2: POST /api/auth/register ───────────────────────────────────────
   console.log('\n[Step 2a] POST /api/auth/register');
-  const regBody = JSON.stringify({
-    email: 'autotest@connect.dev',
-    password: 'password123',
-    full_name: 'Auto Tester',
-    institution: 'IIT Bombay',
-  });
+  const regBody = JSON.stringify(TEST_USER);
   const t2 = await request(
-    { ...base, method: 'POST', path: '/api/auth/register', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(regBody) } },
+    { ...BASE, method: 'POST', path: '/api/auth/register', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(regBody) } },
     regBody
   );
-  // 201 on first run, 409 if already exists (idempotent test)
   assert('Status 201 or 409', t2.status === 201 || t2.status === 409, `got ${t2.status}`);
   if (t2.status === 201) {
     assert('No password_hash in response', !t2.body.user?.password_hash);
@@ -74,9 +67,9 @@ async function runTests() {
 
   // ── TEST 3: POST /api/auth/login ──────────────────────────────────────────
   console.log('\n[Step 2b] POST /api/auth/login');
-  const loginBody = JSON.stringify({ email: 'autotest@connect.dev', password: 'password123' });
+  const loginBody = JSON.stringify({ email: TEST_USER.email, password: TEST_USER.password });
   const t3 = await request(
-    { ...base, method: 'POST', path: '/api/auth/login', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(loginBody) } },
+    { ...BASE, method: 'POST', path: '/api/auth/login', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(loginBody) } },
     loginBody
   );
   assert('Status 200', t3.status === 200, `got ${t3.status}`);
@@ -88,31 +81,31 @@ async function runTests() {
   // ── TEST 4: GET /api/auth/me (with cookie) ────────────────────────────────
   console.log('\n[Step 2c] GET /api/auth/me (authenticated)');
   const t4 = await request({
-    ...base, method: 'GET', path: '/api/auth/me',
+    ...BASE, method: 'GET', path: '/api/auth/me',
     headers: { Cookie: cookie },
   });
   assert('Status 200', t4.status === 200, `got ${t4.status}`);
   assert('Returns user object', !!t4.body.user?.email);
-  assert('Correct email', t4.body.user?.email === 'autotest@connect.dev');
+  assert('Correct email', t4.body.user?.email === TEST_USER.email);
 
   // ── TEST 5: GET /api/auth/me (no cookie → 401) ────────────────────────────
   console.log('\n[Step 2d] GET /api/auth/me (unauthenticated)');
-  const t5 = await request({ ...base, method: 'GET', path: '/api/auth/me', headers: {} });
+  const t5 = await request({ ...BASE, method: 'GET', path: '/api/auth/me', headers: {} });
   assert('Status 401', t5.status === 401, `got ${t5.status}`);
   assert('Error message present', !!t5.body.error);
 
   // ── TEST 6: Wrong password → 401 ──────────────────────────────────────────
   console.log('\n[Step 2e] POST /api/auth/login (wrong password)');
-  const badBody = JSON.stringify({ email: 'autotest@connect.dev', password: 'wrongpass' });
+  const badBody = JSON.stringify({ email: TEST_USER.email, password: 'wrongpass' });
   const t6 = await request(
-    { ...base, method: 'POST', path: '/api/auth/login', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(badBody) } },
+    { ...BASE, method: 'POST', path: '/api/auth/login', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(badBody) } },
     badBody
   );
   assert('Status 401', t6.status === 401, `got ${t6.status}`);
 
   // ── TEST 7: GET /api/auth/logout ──────────────────────────────────────────
   console.log('\n[Step 2f] GET /api/auth/logout');
-  const t7 = await request({ ...base, method: 'GET', path: '/api/auth/logout', headers: { Cookie: cookie } });
+  const t7 = await request({ ...BASE, method: 'GET', path: '/api/auth/logout', headers: { Cookie: cookie } });
   assert('Status 200', t7.status === 200, `got ${t7.status}`);
 
   // ── SUMMARY ───────────────────────────────────────────────────────────────

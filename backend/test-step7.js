@@ -2,6 +2,7 @@
 
 const http = require('http');
 const { io: ioClient } = require('socket.io-client');
+const { BASE, TEST_USER, TEST_APPLICANT } = require('./test-config');
 
 function request(options, body = null) {
   return new Promise((resolve, reject) => {
@@ -23,7 +24,7 @@ function extractCookie(headers) {
 
 function connectSocket(cookie) {
   return new Promise((resolve, reject) => {
-    const socket = ioClient('http://localhost:5000', {
+    const socket = ioClient(`http://${BASE.hostname}:${BASE.port}`, {
       extraHeaders: { Cookie: cookie },
       transports: ['websocket'],
     });
@@ -41,7 +42,6 @@ function waitForEvent(socket, event, timeoutMs = 5000) {
 }
 
 async function runTests() {
-  const base = { hostname: 'localhost', port: 5000 };
   let passed = 0, failed = 0;
 
   function assert(label, condition, detail = '') {
@@ -50,16 +50,16 @@ async function runTests() {
   }
 
   // Login as two different users
-  const login1 = JSON.stringify({ email: 'autotest@connect.dev', password: 'password123' });
-  const r1 = await request({ ...base, method: 'POST', path: '/api/auth/login', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(login1) } }, login1);
+  const login1 = JSON.stringify({ email: TEST_USER.email, password: TEST_USER.password });
+  const r1 = await request({ ...BASE, method: 'POST', path: '/api/auth/login', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(login1) } }, login1);
   const cookie1 = extractCookie(r1.headers);
 
-  const login2 = JSON.stringify({ email: 'applicant@connect.dev', password: 'password123' });
-  const r2 = await request({ ...base, method: 'POST', path: '/api/auth/login', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(login2) } }, login2);
+  const login2 = JSON.stringify({ email: TEST_APPLICANT.email, password: TEST_APPLICANT.password });
+  const r2 = await request({ ...BASE, method: 'POST', path: '/api/auth/login', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(login2) } }, login2);
   const cookie2 = extractCookie(r2.headers);
 
   // Get a project for the room
-  const projResp = await request({ ...base, method: 'GET', path: '/api/projects', headers: { Cookie: cookie1 } });
+  const projResp = await request({ ...BASE, method: 'GET', path: '/api/projects', headers: { Cookie: cookie1 } });
   const projectId = projResp.body.projects[0].id;
   console.log(`🔧  Using project id=${projectId} for chat tests\n`);
 
@@ -80,7 +80,7 @@ async function runTests() {
   // ── TEST 2: Connect socket WITHOUT cookie → should fail ──────────────────
   console.log('\n[Step 7b] Socket.io connect without cookie → error');
   try {
-    const badSocket = ioClient('http://localhost:5000', { transports: ['websocket'] });
+    const badSocket = ioClient(`http://${BASE.hostname}:${BASE.port}`, { transports: ['websocket'] });
     const errorPromise = new Promise((resolve) => {
       badSocket.on('connect_error', (err) => { badSocket.disconnect(); resolve(err); });
       setTimeout(() => { badSocket.disconnect(); resolve(new Error('timeout')); }, 3000);
@@ -95,7 +95,6 @@ async function runTests() {
   console.log('\n[Step 7c] Join room + user_joined event');
   const joinPromise = waitForEvent(socket1, 'user_joined');
   socket1.emit('join_room', { projectId });
-  // small delay for socket1 to be in room before socket2 joins
   await new Promise(r => setTimeout(r, 300));
   socket2.emit('join_room', { projectId });
   try {
@@ -129,7 +128,7 @@ async function runTests() {
 
   // ── TEST 5: REST chat history ────────────────────────────────────────────
   console.log('\n[Step 7e] GET /api/chat/:projectId/messages (REST history)');
-  const t5 = await request({ ...base, method: 'GET', path: `/api/chat/${projectId}/messages`, headers: { Cookie: cookie1 } });
+  const t5 = await request({ ...BASE, method: 'GET', path: `/api/chat/${projectId}/messages`, headers: { Cookie: cookie1 } });
   assert('Status 200', t5.status === 200, `got ${t5.status}`);
   assert('Has messages array', Array.isArray(t5.body.messages));
   assert('Messages persisted (≥2)', t5.body.messages.length >= 2, `got ${t5.body.messages.length}`);
@@ -139,8 +138,8 @@ async function runTests() {
   console.log('\n[Step 7f] Leave room');
   const leavePromise = waitForEvent(socket1, 'user_left', 3000).catch(() => null);
   socket2.emit('leave_room', { projectId });
-  const leaveData = await leavePromise;
-  assert('user_left received or graceful', true); // non-critical timing
+  await leavePromise;
+  assert('user_left received or graceful', true);
 
   // ── Cleanup ──────────────────────────────────────────────────────────────
   socket1.disconnect();
