@@ -43,9 +43,20 @@ function ProjectsContent() {
 
   if (loading || !user) {
     return (
-      <div className="flex items-center justify-center min-h-[80vh]">
-        <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin"
-             style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }} />
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-fadeIn">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+          <div>
+            <div className="skeleton h-8 w-40 mb-2"></div>
+            <div className="skeleton h-4 w-24"></div>
+          </div>
+          <div className="skeleton h-10 w-32"></div>
+        </div>
+        <div className="skeleton h-10 w-full mb-6"></div>
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <div key={i} className="card skeleton h-48" style={{ padding: 0 }}></div>
+          ))}
+        </div>
       </div>
     );
   }
@@ -96,9 +107,10 @@ function ProjectsContent() {
 
       {/* Project grid */}
       {dataLoading ? (
-        <div className="flex items-center justify-center py-20">
-          <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin"
-               style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }} />
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <div key={i} className="card skeleton h-48" style={{ padding: 0 }}></div>
+          ))}
         </div>
       ) : projects.length === 0 ? (
         <div className="card text-center py-16">
@@ -164,9 +176,20 @@ function ProjectsContent() {
 export default function ProjectsPage() {
   return (
     <Suspense fallback={
-      <div className="flex items-center justify-center min-h-[80vh]">
-        <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin"
-             style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }} />
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-fadeIn">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+          <div>
+            <div className="skeleton h-8 w-40 mb-2"></div>
+            <div className="skeleton h-4 w-24"></div>
+          </div>
+          <div className="skeleton h-10 w-32"></div>
+        </div>
+        <div className="skeleton h-10 w-full mb-6"></div>
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <div key={i} className="card skeleton h-48" style={{ padding: 0 }}></div>
+          ))}
+        </div>
       </div>
     }>
       <ProjectsContent />

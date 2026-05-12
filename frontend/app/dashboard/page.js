@@ -35,9 +35,31 @@ export default function DashboardPage() {
 
   if (loading || !user) {
     return (
-      <div className="flex items-center justify-center min-h-[80vh]">
-        <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin"
-             style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }} />
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-fadeIn">
+        <div className="mb-8">
+          <div className="skeleton h-8 w-64 mb-2"></div>
+          <div className="skeleton h-4 w-96"></div>
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="card skeleton h-28" style={{ padding: 0 }}></div>
+          ))}
+        </div>
+        <div className="grid lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-3">
+            <div className="skeleton h-6 w-32 mb-4"></div>
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="card skeleton h-24" style={{ padding: 0 }}></div>
+            ))}
+          </div>
+          <div className="space-y-6">
+            <div>
+              <div className="skeleton h-6 w-28 mb-4"></div>
+              <div className="card skeleton h-20 mb-2" style={{ padding: 0 }}></div>
+              <div className="card skeleton h-20" style={{ padding: 0 }}></div>
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -90,9 +112,10 @@ export default function DashboardPage() {
           </div>
 
           {dataLoading ? (
-            <div className="card flex items-center justify-center py-12">
-              <div className="w-6 h-6 border-2 border-t-transparent rounded-full animate-spin"
-                   style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }} />
+            <div className="space-y-3">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="card skeleton h-24" style={{ padding: 0 }}></div>
+              ))}
             </div>
           ) : myProjects.length === 0 ? (
             <div className="card text-center py-12">
