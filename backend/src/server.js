@@ -2,6 +2,9 @@
 // Entry point for the CONNECT Express monolith.
 
 require('dotenv').config();
+const { validateEnv } = require('./config/env');
+validateEnv();
+
 const express = require('express');
 const http = require('http');
 const cookieParser = require('cookie-parser');
