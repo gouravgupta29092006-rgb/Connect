@@ -1,0 +1,44 @@
+services:
+  # ─── Backend API Server ─────────────────────────────────────────────────────
+  - type: web
+    name: connect-backend
+    env: node
+    region: oregon
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: DATABASE_SSL
+        value: true
+      - key: DATABASE_URL
+        sync: false # User will populate securely in Render dashboard
+      - key: JWT_SECRET
+        sync: false # User will populate securely in Render dashboard
+      - key: GEMINI_API_KEY
+        sync: false # Optional Google Gemini API key
+      - key: FRONTEND_URL
+        fromService:
+          type: web
+          name: connect-frontend
+          envVarKey: RENDER_EXTERNAL_URL
+
+  # ─── Frontend Next.js Client ────────────────────────────────────────────────
+  - type: web
+    name: connect-frontend
+    env: node
+    region: oregon
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          type: web
+          name: connect-backend
+          envVarKey: RENDER_EXTERNAL_URL
