@@ -1,0 +1,13 @@
+{
+  "name": "connect-platform-root",
+  "private": true,
+  "scripts": {
+    "prepare": "husky",
+    "lint:backend": "cd backend && npx eslint . --ext .js --no-error-on-unmatched-pattern || true",
+    "lint:frontend": "cd frontend && npm run lint || true",
+    "check-secrets": "node scripts/check-secrets.js"
+  },
+  "devDependencies": {
+    "husky": "^9.0.11"
+  }
+}
