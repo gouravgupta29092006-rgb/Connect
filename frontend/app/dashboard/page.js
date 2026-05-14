@@ -10,6 +10,7 @@ export default function DashboardPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const [myProjects, setMyProjects] = useState([]);
+  const [totalProjects, setTotalProjects] = useState(0);
   const [applications, setApplications] = useState([]);
   const [notifications, setNotifications] = useState([]);
   const [dataLoading, setDataLoading] = useState(true);
@@ -27,6 +28,7 @@ export default function DashboardPage() {
     ]).then(([projRes, appRes, notifRes]) => {
       const allProjects = projRes.data.projects || [];
       setMyProjects(allProjects.filter((p) => p.owner_id === user.id));
+      setTotalProjects(allProjects.length);
       setApplications(appRes.data.applications || []);
       setNotifications((notifRes.data.notifications || []).filter((n) => !n.is_read).slice(0, 5));
       setDataLoading(false);
@@ -99,6 +101,35 @@ export default function DashboardPage() {
             <div className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{action.desc}</div>
           </Link>
         ))}
+      </div>
+
+      {/* Engagement Overview metrics */}
+      <div className="mb-8">
+        <h2 className="text-lg font-semibold mb-3">Engagement Overview</h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="card" style={{ background: 'var(--bg-card)', borderLeft: '4px solid var(--accent)' }}>
+            <div className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>My Projects</div>
+            <div className="text-2xl font-bold mt-1" style={{ color: 'var(--accent)' }}>{myProjects.length}</div>
+            <div className="text-[10px] mt-1 line-clamp-1" style={{ color: 'var(--text-secondary)' }}>Created by you</div>
+          </div>
+          <div className="card" style={{ background: 'var(--bg-card)', borderLeft: '4px solid var(--info)' }}>
+            <div className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Platform Discovery</div>
+            <div className="text-2xl font-bold mt-1" style={{ color: 'var(--info)' }}>{totalProjects}</div>
+            <div className="text-[10px] mt-1 line-clamp-1" style={{ color: 'var(--text-secondary)' }}>Available workspace projects</div>
+          </div>
+          <div className="card" style={{ background: 'var(--bg-card)', borderLeft: '4px solid var(--warning)' }}>
+            <div className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>My Applications</div>
+            <div className="text-2xl font-bold mt-1" style={{ color: 'var(--warning)' }}>{applications.length}</div>
+            <div className="text-[10px] mt-1 line-clamp-1" style={{ color: 'var(--text-secondary)' }}>
+              {applications.filter(a => a.status === 'accepted').length} accepted
+            </div>
+          </div>
+          <div className="card" style={{ background: 'var(--bg-card)', borderLeft: '4px solid #a855f7' }}>
+            <div className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Action Items</div>
+            <div className="text-2xl font-bold mt-1" style={{ color: '#a855f7' }}>{notifications.length}</div>
+            <div className="text-[10px] mt-1 line-clamp-1" style={{ color: 'var(--text-secondary)' }}>Unread system alerts</div>
+          </div>
+        </div>
       </div>
 
       <div className="grid lg:grid-cols-3 gap-6">
