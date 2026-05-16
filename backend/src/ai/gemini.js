@@ -10,8 +10,7 @@ let _client = null;
 let _model = null;
 
 function getModel() {
-  if (_model) return _model;
-
+  // Always re-read the key so a running server picks up changes without restart
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     console.warn(
@@ -21,9 +20,12 @@ function getModel() {
     return null;
   }
 
-  _client = new GoogleGenerativeAI(apiKey);
-  // gemini-1.5-flash: free tier, fast, 1M tokens/day
-  _model = _client.getGenerativeModel({ model: 'gemini-1.5-flash' });
+  // Re-initialise if the key changed or model not yet created
+  if (!_model || !_client) {
+    _client = new GoogleGenerativeAI(apiKey);
+    // gemini-2.0-flash: free tier, fast, 1M tokens/day
+    _model = _client.getGenerativeModel({ model: 'gemini-2.0-flash' });
+  }
   return _model;
 }
 
