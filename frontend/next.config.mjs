@@ -1,6 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactCompiler: true,
+  experimental: {
+    turbopack: {
+      root: __dirname,
+    },
+  },
   async rewrites() {
     return [
       {
