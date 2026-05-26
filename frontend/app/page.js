@@ -1,155 +1,188 @@
 'use client';
-
 import Link from 'next/link';
-import { useAuth } from '@/lib/AuthContext';
-import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
-export default function Home() {
-  const { user, loading } = useAuth();
-  const router = useRouter();
+const features = [
+  { icon: 'bolt', label: 'AI Team Matcher', desc: 'Intelligent pairing based on complementary skills, experience, and project needs.' },
+  { icon: 'psychology', label: 'AI Project Advisor', desc: 'Real-time roadmaps, debug assistance, and structural recommendations.' },
+  { icon: 'hub', label: 'Real-time Collab', desc: 'Live project boards, encrypted chat, and synchronized team workspaces.' },
+  { icon: 'auto_awesome', label: 'Smart Matching', desc: 'SQL-ranked candidates scored 0–100% with AI-generated explanations.' },
+];
+
+const stats = [
+  { value: '2.4K+', label: 'Engineers' },
+  { value: '830+', label: 'Projects' },
+  { value: '98%', label: 'Match Rate' },
+  { value: '15ms', label: 'Latency' },
+];
+
+export default function LandingPage() {
+  const canvasRef = useRef(null);
 
   useEffect(() => {
-    if (!loading && user) router.replace('/dashboard');
-  }, [user, loading, router]);
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[80vh]">
-        <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin"
-             style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }} />
-      </div>
-    );
-  }
+    const particles = Array.from({ length: 60 }, () => ({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      r: Math.random() * 1.5 + 0.3,
+      vx: (Math.random() - 0.5) * 0.3,
+      vy: (Math.random() - 0.5) * 0.3,
+      alpha: Math.random() * 0.5 + 0.1,
+    }));
+
+    let raf;
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      particles.forEach(p => {
+        p.x += p.vx; p.y += p.vy;
+        if (p.x < 0 || p.x > canvas.width)  p.vx *= -1;
+        if (p.y < 0 || p.y > canvas.height) p.vy *= -1;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(0,212,255,${p.alpha})`;
+        ctx.fill();
+      });
+      // Draw connecting lines
+      for (let i = 0; i < particles.length; i++) {
+        for (let j = i + 1; j < particles.length; j++) {
+          const dx = particles[i].x - particles[j].x;
+          const dy = particles[i].y - particles[j].y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < 120) {
+            ctx.beginPath();
+            ctx.moveTo(particles[i].x, particles[i].y);
+            ctx.lineTo(particles[j].x, particles[j].y);
+            ctx.strokeStyle = `rgba(0,212,255,${0.12 * (1 - dist / 120)})`;
+            ctx.lineWidth = 0.5;
+            ctx.stroke();
+          }
+        }
+      }
+      raf = requestAnimationFrame(draw);
+    }
+    draw();
+    const onResize = () => { canvas.width = window.innerWidth; canvas.height = window.innerHeight; };
+    window.addEventListener('resize', onResize);
+    return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', onResize); };
+  }, []);
 
   return (
-    <div className="relative overflow-hidden">
-      {/* Background grid */}
-      <div className="absolute inset-0 opacity-5"
-           style={{
-             backgroundImage: 'linear-gradient(var(--accent) 1px, transparent 1px), linear-gradient(90deg, var(--accent) 1px, transparent 1px)',
-             backgroundSize: '60px 60px',
-           }} />
+    <div style={{ minHeight: '100vh', background: 'var(--bg-base)', position: 'relative', overflow: 'hidden' }}>
+      {/* Particle canvas */}
+      <canvas ref={canvasRef} style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 0 }} />
 
-      {/* Glow orbs */}
-      <div className="absolute top-20 left-1/4 w-96 h-96 rounded-full blur-3xl opacity-10"
-           style={{ background: 'var(--accent)' }} />
-      <div className="absolute bottom-20 right-1/4 w-80 h-80 rounded-full blur-3xl opacity-8"
-           style={{ background: 'var(--info)' }} />
+      {/* Background gradient blobs */}
+      <div style={{ position: 'fixed', top: '-20%', left: '-10%', width: 600, height: 600, borderRadius: '50%', background: 'radial-gradient(circle, rgba(0,128,255,0.08) 0%, transparent 70%)', pointerEvents: 'none', zIndex: 0 }} />
+      <div style={{ position: 'fixed', bottom: '-20%', right: '-10%', width: 700, height: 700, borderRadius: '50%', background: 'radial-gradient(circle, rgba(124,58,237,0.08) 0%, transparent 70%)', pointerEvents: 'none', zIndex: 0 }} />
+
+      {/* Navbar */}
+      <nav style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 48px', borderBottom: '1px solid var(--border)', background: 'rgba(5,10,15,0.8)', backdropFilter: 'blur(20px)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <img src="/logo.png" alt="CONNECT Logo" style={{ height: 32, width: 'auto', objectFit: 'contain' }} />
+        </div>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <Link href="/login" className="btn btn-ghost" style={{ padding: '8px 20px' }}>Sign In</Link>
+          <Link href="/register" className="btn btn-primary" style={{ padding: '8px 20px' }}>Get Started Free</Link>
+        </div>
+      </nav>
 
       {/* Hero */}
-      <section className="relative max-w-6xl mx-auto px-4 pt-20 pb-32 text-center">
-        <div className="animate-slideUp">
-          <div className="inline-flex items-center gap-2 mb-6 px-4 py-2 rounded-full text-sm"
-               style={{ background: 'var(--accent-dim)', color: 'var(--accent)', border: '1px solid rgba(0,255,198,0.2)' }}>
-            <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: 'var(--accent)' }} />
-            AI-Powered Team Matching
+      <section style={{ position: 'relative', zIndex: 10, minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '120px 48px 80px' }}>
+        <div>
+          <div className="badge badge-cyan" style={{ marginBottom: 24, display: 'inline-flex' }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 14 }}>bolt</span>
+            AI-Powered Engineering Portal
           </div>
 
-          <h1 className="text-5xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight leading-tight mb-6">
-            Find Your Perfect
-            <br />
-            <span className="gradient-text">Project Team</span>
+          <h1 style={{ fontFamily: 'Space Grotesk', fontSize: 'clamp(40px,7vw,80px)', fontWeight: 700, lineHeight: 1.1, marginBottom: 24, maxWidth: 900, margin: '0 auto 24px' }}>
+            The Future of<br />
+            <span style={{ background: 'linear-gradient(135deg, var(--cyan), var(--blue), var(--purple))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
+              Engineering Collaboration
+            </span>
           </h1>
 
-          <p className="text-lg sm:text-xl max-w-2xl mx-auto mb-10" style={{ color: 'var(--text-secondary)' }}>
-            CONNECT uses AI to match engineering students with the right teammates
-            based on skills, experience, and project needs. Stop searching. Start building.
+          <p style={{ fontSize: 18, color: 'var(--text-secondary)', maxWidth: 600, margin: '0 auto 40px', lineHeight: 1.7 }}>
+            AI-powered ecosystem connecting engineers, students, and innovators. 
+            Find teammates, build projects, and ship faster — together.
           </p>
 
-          <div className="flex items-center justify-center gap-4 flex-wrap">
-            <Link href="/register" className="btn btn-primary text-base px-8 py-3 glow-accent animate-pulse-glow">
-              Get Started Free →
+          <div style={{ display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap', marginBottom: 80 }}>
+            <Link href="/register" className="btn btn-primary" style={{ padding: '14px 32px', fontSize: 16 }}>
+              <span className="material-symbols-outlined">rocket_launch</span>
+              Start Building Free
             </Link>
-            <Link href="/login" className="btn btn-secondary text-base px-8 py-3">
+            <Link href="/login" className="btn btn-ghost" style={{ padding: '14px 32px', fontSize: 16 }}>
+              <span className="material-symbols-outlined">login</span>
               Sign In
             </Link>
           </div>
-        </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-3 gap-6 max-w-lg mx-auto mt-20 animate-fadeIn" style={{ animationDelay: '0.3s' }}>
-          {[
-            { value: 'AI', label: 'Matchmaking' },
-            { value: 'Real-time', label: 'Team Chat' },
-            { value: 'Smart', label: 'Roadmaps' },
-          ].map((stat) => (
-            <div key={stat.label} className="text-center">
-              <div className="text-2xl font-bold gradient-text">{stat.value}</div>
-              <div className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>{stat.label}</div>
-            </div>
-          ))}
+          {/* Stats */}
+          <div style={{ display: 'flex', gap: 48, justifyContent: 'center', flexWrap: 'wrap' }}>
+            {stats.map(s => (
+              <div key={s.label} style={{ textAlign: 'center' }}>
+                <div style={{ fontFamily: 'Space Grotesk', fontSize: 28, fontWeight: 700, color: 'var(--cyan)' }}>{s.value}</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
       {/* Features */}
-      <section className="relative max-w-6xl mx-auto px-4 pb-24">
-        <h2 className="text-3xl font-bold text-center mb-12">
-          Everything You Need to <span className="gradient-text">Build Together</span>
-        </h2>
-
-        <div className="grid md:grid-cols-3 gap-6">
-          {[
-            {
-              icon: '🤖',
-              title: 'AI Matchmaking',
-              desc: 'Our scoring algorithm ranks candidates 0–100% based on skill alignment, then Gemini explains why they fit.',
-            },
-            {
-              icon: '💬',
-              title: 'Real-time Chat',
-              desc: 'Socket.io-powered project rooms. Message your team instantly with persistent chat history.',
-            },
-            {
-              icon: '📋',
-              title: 'Smart Roadmaps',
-              desc: 'AI generates structured project roadmaps with phases, tasks, milestones, and risk analysis.',
-            },
-            {
-              icon: '🎯',
-              title: 'Skill Profiles',
-              desc: 'Rate your skills 1–5 across categories. Projects specify what they need. The AI connects the dots.',
-            },
-            {
-              icon: '📩',
-              title: 'Apply & Track',
-              desc: 'One-click applications with real-time notifications. Accept, reject, and manage your team.',
-            },
-            {
-              icon: '🛠',
-              title: 'Debug Advisor',
-              desc: 'Stuck on a bug? Ask the AI advisor for root cause analysis and step-by-step fixes.',
-            },
-          ].map((feature) => (
-            <div key={feature.title} className="card group hover:glow-accent">
-              <div className="text-3xl mb-4">{feature.icon}</div>
-              <h3 className="text-lg font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
-                {feature.title}
-              </h3>
-              <p className="text-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-                {feature.desc}
-              </p>
-            </div>
-          ))}
+      <section style={{ position: 'relative', zIndex: 10, padding: '80px 48px' }}>
+        <div style={{ maxWidth: 1200, margin: '0 auto' }}>
+          <div style={{ textAlign: 'center', marginBottom: 56 }}>
+            <div className="badge badge-purple" style={{ marginBottom: 16, display: 'inline-flex' }}>Core Modules</div>
+            <h2 style={{ fontFamily: 'Space Grotesk', fontSize: 40, fontWeight: 700 }}>
+              Powered by <span className="text-glow">Intelligence</span>
+            </h2>
+          </div>
+          <div className="grid-2" style={{ gap: 24 }}>
+            {features.map((f, i) => (
+              <div key={f.label} className="card" style={{ padding: 32, animationDelay: `${i * 0.1}s` }}>
+                <div style={{ width: 48, height: 48, borderRadius: 12, background: 'var(--bg-overlay)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+                  <span className="material-symbols-outlined" style={{ color: 'var(--cyan)', fontSize: 24 }}>{f.icon}</span>
+                </div>
+                <h3 style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>{f.label}</h3>
+                <p style={{ color: 'var(--text-secondary)', fontSize: 14, lineHeight: 1.7 }}>{f.desc}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
       {/* CTA */}
-      <section className="relative max-w-4xl mx-auto px-4 pb-24 text-center">
-        <div className="card glow-accent p-10">
-          <h2 className="text-3xl font-bold mb-4">Ready to Find Your Team?</h2>
-          <p className="mb-8" style={{ color: 'var(--text-secondary)' }}>
-            Join CONNECT and let AI do the matchmaking. Your next project starts here.
-          </p>
-          <Link href="/register" className="btn btn-primary text-base px-8 py-3">
-            Create Free Account →
+      <section style={{ position: 'relative', zIndex: 10, padding: '80px 48px', textAlign: 'center' }}>
+        <div style={{ maxWidth: 600, margin: '0 auto', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)', padding: '56px 48px' }}>
+          <h2 style={{ fontFamily: 'Space Grotesk', fontSize: 36, fontWeight: 700, marginBottom: 16 }}>
+            Ready to <span className="text-glow">CONNECT?</span>
+          </h2>
+          <p style={{ color: 'var(--text-secondary)', marginBottom: 32 }}>Join engineers building the next generation of technology.</p>
+          <Link href="/register" className="btn btn-primary" style={{ padding: '14px 40px', fontSize: 16 }}>
+            Create Free Account
           </Link>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="border-t py-8 text-center text-sm" style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
-        Built with ❤️ by CONNECT — AI-Powered Teammate Matching
+      <footer style={{ position: 'relative', zIndex: 10, borderTop: '1px solid var(--border)', padding: '32px 48px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+        <div style={{ fontFamily: 'Space Grotesk', fontWeight: 600, color: 'var(--text-muted)', fontSize: 14 }}>
+          © 2025 CONNECT AI Platform. Precision Engineering through Intelligence.
+        </div>
+        <div style={{ display: 'flex', gap: 24 }}>
+          {['Documentation', 'Privacy', 'Terms'].map(l => (
+            <a key={l} href="#" style={{ color: 'var(--text-muted)', fontSize: 13, textDecoration: 'none' }}
+              onMouseEnter={e => e.target.style.color = 'var(--cyan)'}
+              onMouseLeave={e => e.target.style.color = 'var(--text-muted)'}
+            >{l}</a>
+          ))}
+        </div>
       </footer>
     </div>
   );

@@ -1,199 +1,204 @@
 'use client';
-
-import { useAuth } from '@/lib/AuthContext';
-import { useRouter, useParams } from 'next/navigation';
 import { useEffect, useState, useRef } from 'react';
+import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
-import { getChatMessages, getProject } from '@/lib/api';
-import { io } from 'socket.io-client';
+import AppLayout from '@/components/AppLayout';
+import api from '@/lib/api';
 
 export default function ChatPage() {
-  const { user, loading } = useAuth();
-  const router = useRouter();
-  const params = useParams();
-  const projectId = parseInt(params.id);
-
+  const router   = useRouter();
+  const { id }   = useParams();
   const [project, setProject] = useState(null);
   const [messages, setMessages] = useState([]);
-  const [newMsg, setNewMsg] = useState('');
-  const [connected, setConnected] = useState(false);
+  const [me, setMe]     = useState(null);
+  const [input, setInput] = useState('');
+  const [sending, setSending] = useState(false);
+  const [socketReady, setSocketReady] = useState(false);
+  const [loading, setLoading] = useState(true);
   const socketRef = useRef(null);
-  const messagesEndRef = useRef(null);
-  const [typingUsers, setTypingUsers] = useState([]);
+  const bottomRef = useRef(null);
 
   useEffect(() => {
-    if (!loading && !user) router.replace('/login');
-  }, [user, loading, router]);
+    async function init() {
+      try {
+        const [proj, meRes] = await Promise.all([api.get(`/api/projects/${id}`), api.get('/api/auth/me')]);
+        setProject(proj.data.project);
+        setMe(meRes.data);
+      } catch (err) {
+        if (err.response?.status === 401) router.push('/login');
+        return;
+      } finally { setLoading(false); }
 
-  // Load project info + history
+      // Load chat history
+      try {
+        const { data } = await api.get(`/api/chat/${id}/messages`);
+        setMessages(data.messages || []);
+      } catch {}
+
+      // Connect socket.io
+      try {
+        const { io } = await import('socket.io-client');
+        const socket = io(process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000', {
+          withCredentials: true,
+          transports: ['websocket'],
+        });
+        socketRef.current = socket;
+        socket.on('connect', () => {
+          setSocketReady(true);
+          socket.emit('join_project', id);
+        });
+        socket.on('new_message', msg => {
+          setMessages(m => [...m, msg]);
+        });
+        socket.on('disconnect', () => setSocketReady(false));
+      } catch (err) {
+        console.error('Socket init failed:', err);
+      }
+    }
+    init();
+    return () => { socketRef.current?.disconnect(); };
+  }, [id]);
+
   useEffect(() => {
-    if (!user || !projectId) return;
-    getProject(projectId)
-      .then(({ data }) => setProject(data.project))
-      .catch(() => router.push('/projects'));
-    getChatMessages(projectId)
-      .then(({ data }) => setMessages(data.messages || []))
-      .catch(() => {});
-  }, [user, projectId, router]);
-
-  // Socket connection
-  useEffect(() => {
-    if (!user || !projectId) return;
-
-    const socket = io(window.location.origin, {
-      withCredentials: true,
-      transports: ['websocket', 'polling'],
-    });
-    socketRef.current = socket;
-
-    socket.on('connect', () => {
-      setConnected(true);
-      socket.emit('join_room', { projectId });
-    });
-
-    socket.on('disconnect', () => setConnected(false));
-
-    socket.on('new_message', (msg) => {
-      setMessages((prev) => [...prev, msg]);
-    });
-
-    socket.on('user_joined', (data) => {
-      setMessages((prev) => [
-        ...prev,
-        { id: `sys-${Date.now()}`, content: `${data.fullName} joined the chat`, system: true, created_at: new Date().toISOString() },
-      ]);
-    });
-
-    socket.on('user_left', (data) => {
-      setMessages((prev) => [
-        ...prev,
-        { id: `sys-${Date.now()}`, content: `${data.fullName} left the chat`, system: true, created_at: new Date().toISOString() },
-      ]);
-    });
-
-    return () => {
-      socket.emit('leave_room', { projectId });
-      socket.disconnect();
-    };
-  }, [user, projectId]);
-
-  // Auto-scroll to bottom
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSend = (e) => {
+  async function sendMessage(e) {
     e.preventDefault();
-    if (!newMsg.trim() || !socketRef.current) return;
-    socketRef.current.emit('send_message', { projectId, content: newMsg.trim() });
-    setNewMsg('');
-  };
-
-  if (loading || !user) {
-    return (
-      <div className="flex items-center justify-center min-h-[80vh]">
-        <div className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin"
-             style={{ borderColor: 'var(--accent)', borderTopColor: 'transparent' }} />
-      </div>
-    );
+    if (!input.trim() || sending) return;
+    const text = input.trim();
+    setInput('');
+    setSending(true);
+    try {
+      if (socketRef.current?.connected) {
+        socketRef.current.emit('send_message', { projectId: id, content: text });
+      } else {
+        await api.post(`/api/chat/${id}/messages`, { content: text });
+        const { data } = await api.get(`/api/chat/${id}/messages`);
+        setMessages(data.messages || []);
+      }
+    } catch (err) {
+      console.error('Send failed:', err);
+      setInput(text);
+    } finally { setSending(false); }
   }
 
+  function handleKeyDown(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(e); }
+  }
+
+  if (loading) return (
+    <AppLayout>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
+        <div className="spinner" style={{ width: 40, height: 40 }} />
+      </div>
+    </AppLayout>
+  );
+
   return (
-    <div className="flex flex-col" style={{ height: 'calc(100vh - 64px)' }}>
-      {/* Chat header */}
-      <div className="glass px-4 py-3 flex items-center justify-between"
-           style={{ borderTop: 'none', borderLeft: 'none', borderRight: 'none' }}>
-        <div className="flex items-center gap-3">
-          <Link href={`/projects/${projectId}`} className="text-sm" style={{ color: 'var(--text-muted)' }}>
-            ← Back
+    <AppLayout>
+      <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+        {/* Chat header */}
+        <div style={{ padding: '16px 24px', borderBottom: '1px solid var(--border)', background: 'var(--bg-surface)', display: 'flex', alignItems: 'center', gap: 16 }}>
+          <Link href={`/projects/${id}`} style={{ display: 'flex', alignItems: 'center', textDecoration: 'none', color: 'var(--text-muted)', transition: 'var(--transition)' }}
+            onMouseEnter={e => e.currentTarget.style.color = 'var(--cyan)'}
+            onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}>
+            <span className="material-symbols-outlined">arrow_back</span>
           </Link>
-          <div>
-            <p className="font-semibold text-sm">{project?.title || 'Loading...'}</p>
-            <div className="flex items-center gap-1.5">
-              <div className="w-2 h-2 rounded-full"
-                   style={{ background: connected ? 'var(--accent)' : 'var(--danger)' }} />
-              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                {connected ? 'Connected' : 'Connecting...'}
-              </span>
+          <div style={{ width: 36, height: 36, borderRadius: 8, background: 'linear-gradient(135deg,var(--cyan),var(--blue))', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <span className="material-symbols-outlined" style={{ fontSize: 18, color: '#000' }}>hub</span>
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontFamily: 'Space Grotesk', fontWeight: 700, fontSize: 15 }}>{project?.title}</div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span className={`dot ${socketReady ? 'dot-green' : 'dot-amber'}`} />
+              {socketReady ? 'Real-time sync active' : 'Connecting...'}
             </div>
           </div>
-        </div>
-      </div>
-
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3"
-           style={{ background: 'var(--bg-primary)' }}>
-        {messages.length === 0 && (
-          <div className="text-center py-20">
-            <div className="text-4xl mb-4">💬</div>
-            <p className="font-medium">No messages yet</p>
-            <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
-              Start the conversation!
-            </p>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Link href={`/projects/${id}`} className="btn btn-ghost" style={{ padding: '7px 14px', fontSize: 12 }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>dashboard</span>
+              Project
+            </Link>
           </div>
-        )}
+        </div>
 
-        {messages.map((msg) => {
-          if (msg.system) {
-            return (
-              <div key={msg.id} className="text-center">
-                <span className="text-xs px-3 py-1 rounded-full"
-                      style={{ background: 'var(--bg-card)', color: 'var(--text-muted)' }}>
-                  {msg.content}
-                </span>
+        {/* Messages area */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {messages.length === 0 ? (
+            <div style={{ textAlign: 'center', margin: 'auto', padding: '40px 20px' }}>
+              <div style={{ width: 60, height: 60, borderRadius: '50%', background: 'var(--bg-overlay)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                <span className="material-symbols-outlined" style={{ color: 'var(--cyan)', fontSize: 28 }}>forum</span>
               </div>
-            );
-          }
-
-          const isMe = msg.sender_id === user.id;
-          return (
-            <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-              <div className="max-w-[75%]">
-                {!isMe && (
-                  <p className="text-xs mb-1 ml-1" style={{ color: 'var(--text-muted)' }}>
-                    {msg.sender_name}
-                  </p>
-                )}
-                <div className="px-4 py-2.5 rounded-2xl text-sm"
-                     style={{
-                       background: isMe ? 'var(--accent)' : 'var(--bg-card)',
-                       color: isMe ? 'var(--bg-primary)' : 'var(--text-primary)',
-                       borderBottomRightRadius: isMe ? '4px' : '16px',
-                       borderBottomLeftRadius: isMe ? '16px' : '4px',
-                     }}>
-                  {msg.content}
+              <h3 style={{ fontFamily: 'Space Grotesk', fontSize: 16, marginBottom: 8 }}>Start the Conversation</h3>
+              <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>Be the first to message your team on this project.</p>
+            </div>
+          ) : (
+            messages.map((msg, i) => {
+              const isOwn = msg.sender_id === me?.id || msg.user_id === me?.id;
+              const senderName = msg.sender_name || msg.user_name || 'Engineer';
+              const prevSender = i > 0 && (messages[i-1].sender_id === msg.sender_id || messages[i-1].user_id === msg.user_id);
+              return (
+                <div key={msg.id || i} style={{ display: 'flex', flexDirection: isOwn ? 'row-reverse' : 'row', gap: 10, alignItems: 'flex-end' }}>
+                  {!prevSender && !isOwn && (
+                    <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'linear-gradient(135deg,var(--purple),var(--blue))', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginBottom: 2 }}>
+                      <span style={{ color: '#fff', fontSize: 12, fontWeight: 700 }}>{senderName[0].toUpperCase()}</span>
+                    </div>
+                  )}
+                  {prevSender && !isOwn && <div style={{ width: 30, flexShrink: 0 }} />}
+                  <div style={{ maxWidth: '70%' }}>
+                    {!prevSender && !isOwn && (
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, paddingLeft: 4 }}>{senderName}</div>
+                    )}
+                    <div style={{
+                      padding: '10px 14px',
+                      borderRadius: isOwn ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
+                      background: isOwn ? 'linear-gradient(135deg,var(--cyan),var(--blue))' : 'var(--bg-card)',
+                      border: isOwn ? 'none' : '1px solid var(--border)',
+                      color: isOwn ? '#000' : 'var(--text-primary)',
+                      fontSize: 13,
+                      lineHeight: 1.6,
+                      wordBreak: 'break-word',
+                    }}>
+                      {msg.content}
+                    </div>
+                    <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4, textAlign: isOwn ? 'right' : 'left', paddingLeft: 4, paddingRight: 4, fontFamily: 'JetBrains Mono' }}>
+                      {new Date(msg.created_at || msg.timestamp || Date.now()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                  </div>
                 </div>
-                <p className={`text-xs mt-0.5 ${isMe ? 'text-right mr-1' : 'ml-1'}`}
-                   style={{ color: 'var(--text-muted)' }}>
-                  {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </p>
-              </div>
-            </div>
-          );
-        })}
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* Input */}
-      <form onSubmit={handleSend} className="p-4" style={{ background: 'var(--bg-secondary)', borderTop: '1px solid var(--border)' }}>
-        <div className="flex gap-2 max-w-5xl mx-auto">
-          <input
-            type="text"
-            className="input flex-1"
-            placeholder="Type a message..."
-            value={newMsg}
-            onChange={(e) => setNewMsg(e.target.value)}
-            autoFocus
-          />
-          <button
-            type="submit"
-            disabled={!newMsg.trim() || !connected}
-            className="btn btn-primary px-6"
-          >
-            Send
-          </button>
+              );
+            })
+          )}
+          <div ref={bottomRef} />
         </div>
-      </form>
-    </div>
+
+        {/* Input */}
+        <div style={{ padding: '16px 24px', borderTop: '1px solid var(--border)', background: 'var(--bg-surface)' }}>
+          <form onSubmit={sendMessage} style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
+            <div style={{ flex: 1, position: 'relative' }}>
+              <textarea
+                className="input"
+                rows={1}
+                placeholder="Send a message… (Enter to send, Shift+Enter for newline)"
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                style={{ resize: 'none', padding: '12px 16px', minHeight: 46, maxHeight: 120, lineHeight: 1.5, overflowY: 'auto' }}
+              />
+            </div>
+            <button type="submit" className="btn btn-primary" style={{ padding: '12px 20px', flexShrink: 0 }} disabled={sending || !input.trim()}>
+              {sending ? <span className="spinner" style={{ width: 18, height: 18 }} /> : <span className="material-symbols-outlined">send</span>}
+            </button>
+          </form>
+          <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span className={`dot ${socketReady ? 'dot-green' : 'dot-amber'}`} style={{ width: 6, height: 6 }} />
+            <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'JetBrains Mono' }}>
+              {socketReady ? 'Socket.io connected — real-time sync active' : 'Polling mode — reconnecting...'}
+            </span>
+          </div>
+        </div>
+      </div>
+    </AppLayout>
   );
 }

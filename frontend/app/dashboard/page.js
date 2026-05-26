@@ -1,249 +1,364 @@
 'use client';
-
-import { useAuth } from '@/lib/AuthContext';
-import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { getProjects, getMyApplications, getNotifications } from '@/lib/api';
+import AppLayout from '@/components/AppLayout';
+import api from '@/lib/api';
 
-export default function DashboardPage() {
-  const { user, loading } = useAuth();
-  const router = useRouter();
-  const [myProjects, setMyProjects] = useState([]);
-  const [totalProjects, setTotalProjects] = useState(0);
-  const [applications, setApplications] = useState([]);
-  const [notifications, setNotifications] = useState([]);
-  const [dataLoading, setDataLoading] = useState(true);
-
-  useEffect(() => {
-    if (!loading && !user) router.replace('/login');
-  }, [user, loading, router]);
-
-  useEffect(() => {
-    if (!user) return;
-    Promise.all([
-      getProjects().catch(() => ({ data: { projects: [] } })),
-      getMyApplications().catch(() => ({ data: { applications: [] } })),
-      getNotifications().catch(() => ({ data: { notifications: [] } })),
-    ]).then(([projRes, appRes, notifRes]) => {
-      const allProjects = projRes.data.projects || [];
-      setMyProjects(allProjects.filter((p) => p.owner_id === user.id));
-      setTotalProjects(allProjects.length);
-      setApplications(appRes.data.applications || []);
-      setNotifications((notifRes.data.notifications || []).filter((n) => !n.is_read).slice(0, 5));
-      setDataLoading(false);
-    });
-  }, [user]);
-
-  if (loading || !user) {
-    return (
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-fadeIn">
-        <div className="mb-8">
-          <div className="skeleton h-8 w-64 mb-2"></div>
-          <div className="skeleton h-4 w-96"></div>
-        </div>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="card skeleton h-28" style={{ padding: 0 }}></div>
-          ))}
-        </div>
-        <div className="grid lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-3">
-            <div className="skeleton h-6 w-32 mb-4"></div>
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="card skeleton h-24" style={{ padding: 0 }}></div>
-            ))}
-          </div>
-          <div className="space-y-6">
-            <div>
-              <div className="skeleton h-6 w-28 mb-4"></div>
-              <div className="card skeleton h-20 mb-2" style={{ padding: 0 }}></div>
-              <div className="card skeleton h-20" style={{ padding: 0 }}></div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const statusColors = {
-    recruiting: { bg: 'rgba(0,255,198,0.1)', color: 'var(--accent)', border: 'var(--accent)' },
-    active: { bg: 'rgba(77,154,255,0.1)', color: 'var(--info)', border: 'var(--info)' },
-    completed: { bg: 'rgba(136,136,160,0.1)', color: 'var(--text-secondary)', border: 'var(--text-muted)' },
-    pending: { bg: 'rgba(255,184,77,0.1)', color: 'var(--warning)', border: 'var(--warning)' },
-    accepted: { bg: 'rgba(0,255,198,0.1)', color: 'var(--accent)', border: 'var(--accent)' },
-    rejected: { bg: 'rgba(255,77,106,0.1)', color: 'var(--danger)', border: 'var(--danger)' },
-  };
-
-  const getStatusStyle = (status) => statusColors[status] || statusColors.recruiting;
+/* ── Mini area chart (SVG) ── */
+function AreaChart({ data = [], color = '#00d4ff', height = 80 }) {
+  if (!data.length) return null;
+  const w = 400, h = height;
+  const max = Math.max(...data, 1);
+  const pts = data.map((v, i) => {
+    const x = (i / (data.length - 1)) * w;
+    const y = h - (v / max) * (h - 8);
+    return `${x},${y}`;
+  });
+  const pathD = `M${pts.join(' L')}`;
+  const areaD = `M0,${h} L${pts.join(' L')} L${w},${h} Z`;
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-fadeIn">
-      {/* Welcome header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold mb-1">
-          Welcome back, <span className="gradient-text">{user.full_name?.split(' ')[0]}</span>
-        </h1>
-        <p style={{ color: 'var(--text-secondary)' }}>Here&apos;s what&apos;s happening with your projects</p>
-      </div>
+    <svg viewBox={`0 0 ${w} ${h}`} style={{ width: '100%', height, display: 'block' }} preserveAspectRatio="none">
+      <defs>
+        <linearGradient id="area-grad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.25" />
+          <stop offset="100%" stopColor={color} stopOpacity="0.01" />
+        </linearGradient>
+      </defs>
+      <path d={areaD} fill="url(#area-grad)" />
+      <path d={pathD} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+        style={{ filter: `drop-shadow(0 0 4px ${color}60)` }} />
+    </svg>
+  );
+}
 
-      {/* Quick actions */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        {[
-          { href: '/projects/new', icon: '➕', label: 'New Project', desc: 'Create a project' },
-          { href: '/projects', icon: '🔍', label: 'Browse', desc: 'Find projects' },
-          { href: '/profile', icon: '⚙️', label: 'Profile', desc: 'Edit your skills' },
-          { href: '/ai-advisor', icon: '🤖', label: 'AI Advisor', desc: 'Get help' },
-        ].map((action) => (
-          <Link key={action.href} href={action.href} className="card group text-center hover:glow-accent">
-            <div className="text-2xl mb-2">{action.icon}</div>
-            <div className="text-sm font-semibold">{action.label}</div>
-            <div className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{action.desc}</div>
-          </Link>
-        ))}
+/* ── Donut gauge ── */
+function DonutGauge({ value = 92, size = 120, color = '#00d4ff', label = '' }) {
+  const r = 45, cx = 60, cy = 60;
+  const circ = 2 * Math.PI * r;
+  const offset = circ - (value / 100) * circ;
+  return (
+    <div style={{ position: 'relative', width: size, height: size }}>
+      <svg viewBox="0 0 120 120" width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
+        <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="10" />
+        <circle cx={cx} cy={cy} r={r} fill="none"
+          stroke={color} strokeWidth="10" strokeLinecap="round"
+          strokeDasharray={circ}
+          strokeDashoffset={offset}
+          style={{ filter: `drop-shadow(0 0 6px ${color}80)`, transition: 'stroke-dashoffset 1.2s cubic-bezier(.4,0,.2,1)' }}
+        />
+      </svg>
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+        <span style={{ fontFamily: 'Space Grotesk', fontWeight: 700, fontSize: size * 0.2, color, lineHeight: 1 }}>{value}%</span>
+        {label && <span style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2, textAlign: 'center', lineHeight: 1.2 }}>{label}</span>}
       </div>
+    </div>
+  );
+}
 
-      {/* Engagement Overview metrics */}
-      <div className="mb-8">
-        <h2 className="text-lg font-semibold mb-3">Engagement Overview</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="card" style={{ background: 'var(--bg-card)', borderLeft: '4px solid var(--accent)' }}>
-            <div className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>My Projects</div>
-            <div className="text-2xl font-bold mt-1" style={{ color: 'var(--accent)' }}>{myProjects.length}</div>
-            <div className="text-[10px] mt-1 line-clamp-1" style={{ color: 'var(--text-secondary)' }}>Created by you</div>
-          </div>
-          <div className="card" style={{ background: 'var(--bg-card)', borderLeft: '4px solid var(--info)' }}>
-            <div className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Platform Discovery</div>
-            <div className="text-2xl font-bold mt-1" style={{ color: 'var(--info)' }}>{totalProjects}</div>
-            <div className="text-[10px] mt-1 line-clamp-1" style={{ color: 'var(--text-secondary)' }}>Available workspace projects</div>
-          </div>
-          <div className="card" style={{ background: 'var(--bg-card)', borderLeft: '4px solid var(--warning)' }}>
-            <div className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>My Applications</div>
-            <div className="text-2xl font-bold mt-1" style={{ color: 'var(--warning)' }}>{applications.length}</div>
-            <div className="text-[10px] mt-1 line-clamp-1" style={{ color: 'var(--text-secondary)' }}>
-              {applications.filter(a => a.status === 'accepted').length} accepted
+/* ── Sprint card with progress bar ── */
+function SprintCard({ project }) {
+  const progress = project.progress ?? Math.floor(Math.random() * 60 + 20);
+  const colorClass = progress >= 70 ? 'progress-bar-fill-green' : progress >= 40 ? '' : 'progress-bar-fill-amber';
+  return (
+    <Link href={`/projects/${project.id}`} style={{ textDecoration: 'none' }}>
+      <div className="card card-glow" style={{ padding: '14px 18px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {project.title}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+              {project.owner_name || 'You'} • {project.skills?.length || 0} skills
             </div>
           </div>
-          <div className="card" style={{ background: 'var(--bg-card)', borderLeft: '4px solid #a855f7' }}>
-            <div className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Action Items</div>
-            <div className="text-2xl font-bold mt-1" style={{ color: '#a855f7' }}>{notifications.length}</div>
-            <div className="text-[10px] mt-1 line-clamp-1" style={{ color: 'var(--text-secondary)' }}>Unread system alerts</div>
-          </div>
+          <span className={`badge badge-${project.status === 'recruiting' ? 'green' : project.status === 'active' ? 'cyan' : 'amber'}`}>
+            SPRINT #{String(project.id).slice(-2).replace(/\D/g, '') || '01'}
+          </span>
+        </div>
+        <div className="progress-bar-wrap">
+          <div className={`progress-bar-fill ${colorClass}`} style={{ width: `${progress}%` }} />
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
+          <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'JetBrains Mono' }}>
+            {project.status?.toUpperCase()}
+          </span>
+          <span style={{ fontSize: 10, color: 'var(--cyan)', fontFamily: 'JetBrains Mono' }}>{progress}%</span>
         </div>
       </div>
+    </Link>
+  );
+}
 
-      <div className="grid lg:grid-cols-3 gap-6">
-        {/* My Projects */}
-        <div className="lg:col-span-2">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold">My Projects</h2>
-            <Link href="/projects/new" className="text-sm font-medium" style={{ color: 'var(--accent)' }}>
-              + Create new
-            </Link>
-          </div>
+/* ── Log level badge ── */
+function LogLevel({ type }) {
+  const map = {
+    INFO:   'log-level-info',
+    DEPLOY: 'log-level-deploy',
+    WARN:   'log-level-warn',
+    AUTH:   'log-level-auth',
+    ERROR:  'log-level-error',
+  };
+  return <span className={`log-level ${map[type] || 'log-level-info'}`}>{type}</span>;
+}
 
-          {dataLoading ? (
-            <div className="space-y-3">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="card skeleton h-24" style={{ padding: 0 }}></div>
-              ))}
-            </div>
-          ) : myProjects.length === 0 ? (
-            <div className="card text-center py-12">
-              <div className="text-4xl mb-4">📋</div>
-              <p className="font-medium mb-1">No projects yet</p>
-              <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>Create your first project to get started</p>
-              <Link href="/projects/new" className="btn btn-primary">Create Project</Link>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {myProjects.slice(0, 5).map((project) => (
-                <Link key={project.id} href={`/projects/${project.id}`} className="card block group">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-semibold group-hover:text-[var(--accent)] transition-colors">
-                      {project.title}
-                    </h3>
-                    <span className="badge text-xs px-2 py-0.5"
-                          style={{
-                            background: getStatusStyle(project.status).bg,
-                            color: getStatusStyle(project.status).color,
-                            borderColor: getStatusStyle(project.status).border,
-                          }}>
-                      {project.status}
-                    </span>
-                  </div>
-                  <p className="text-sm line-clamp-1" style={{ color: 'var(--text-secondary)' }}>
-                    {project.description}
-                  </p>
-                </Link>
-              ))}
-            </div>
-          )}
+/* ── Throughput data (simulated wave) ── */
+function makeThroughputData() {
+  return Array.from({ length: 20 }, (_, i) =>
+    3 + Math.sin(i * 0.6) * 1.2 + Math.random() * 0.5
+  );
+}
+
+export default function DashboardPage() {
+  const router = useRouter();
+  const [user, setUser]         = useState(null);
+  const [projects, setProjects] = useState([]);
+  const [notifs, setNotifs]     = useState([]);
+  const [apps, setApps]         = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const [throughput]            = useState(makeThroughputData);
+  const [aiScore]               = useState(92);
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const [me, proj, n, a] = await Promise.all([
+          api.get('/auth/me'),
+          api.get('/projects'),
+          api.get('/notifications'),
+          api.get('/applications/mine'),
+        ]);
+        setUser(me.data);
+        setProjects(proj.data.projects || []);
+        setNotifs(n.data.notifications || []);
+        setApps(a.data.applications || []);
+      } catch { router.push('/login'); }
+      finally { setLoading(false); }
+    }
+    load();
+  }, []);
+
+  const stats = [
+    { icon: 'account_tree', label: 'Active Sprints',  value: projects.length,                          color: 'var(--cyan)',   trend: '+2 this week', href: '/projects' },
+    { icon: 'send',         label: 'Applications',    value: apps.length,                              color: '#a78bfa',      trend: 'All time',     href: '/projects' },
+    { icon: 'notifications',label: 'Unread Events',   value: notifs.filter(n => !n.is_read).length,   color: 'var(--amber)', trend: 'Requires action', href: '/notifications' },
+    { icon: 'psychology',   label: 'AI Match Score',  value: `${aiScore}%`,                           color: 'var(--green)', trend: 'System optimal', href: '/ai-advisor' },
+  ];
+
+  /* Build system logs from notifications */
+  const logTypes = ['INFO', 'DEPLOY', 'WARN', 'AUTH', 'INFO'];
+  const systemLogs = notifs.slice(0, 6).map((n, i) => ({
+    id: n.id,
+    time: new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+    type: logTypes[i % logTypes.length],
+    msg: n.message,
+    read: n.is_read,
+  }));
+  /* Pad with static logs if empty */
+  const defaultLogs = [
+    { id: 'l1', time: '10:42:01', type: 'INFO',   msg: 'Neural cluster alpha synced successfully.' },
+    { id: 'l2', time: '10:40:15', type: 'DEPLOY', msg: 'CI/CD pipeline completed on main branch.' },
+    { id: 'l3', time: '10:35:22', type: 'WARN',   msg: 'High latency detected in US-EAST region.' },
+    { id: 'l4', time: '10:30:00', type: 'INFO',   msg: 'Database backup task completed HDFS.' },
+    { id: 'l5', time: '10:05:44', type: 'AUTH',   msg: 'Access session granted to localhost.' },
+  ];
+  const logs = systemLogs.length ? systemLogs : defaultLogs;
+
+  if (loading) return (
+    <AppLayout>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div className="spinner" style={{ width: 36, height: 36, margin: '0 auto 14px' }} />
+          <p style={{ color: 'var(--text-muted)', fontFamily: 'JetBrains Mono', fontSize: 11, letterSpacing: '0.1em' }}>INITIALIZING SYSTEMS...</p>
         </div>
+      </div>
+    </AppLayout>
+  );
 
-        {/* Sidebar */}
-        <div className="space-y-6">
-          {/* Notifications */}
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold">Notifications</h2>
-              <Link href="/notifications" className="text-sm" style={{ color: 'var(--accent)' }}>View all</Link>
-            </div>
-            {notifications.length === 0 ? (
-              <div className="card text-center py-8">
-                <div className="text-2xl mb-2">🔔</div>
-                <p className="text-sm" style={{ color: 'var(--text-muted)' }}>All caught up!</p>
+  return (
+    <AppLayout>
+      <div className="page-content fade-in">
+
+        {/* ── Page Header ── */}
+        <div className="page-header">
+          <div className="page-header-row">
+            <div>
+              <div className="page-eyebrow">
+                <span className="dot dot-green dot-pulse" />
+                <span className="page-eyebrow-text">System V3.4.0 Active • All nodes operational</span>
               </div>
-            ) : (
-              <div className="space-y-2">
-                {notifications.map((n) => (
-                  <div key={n.id} className="card py-3 px-4">
-                    <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{n.content}</p>
-                    <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                      {new Date(n.created_at).toLocaleDateString()}
-                    </p>
+              <h1 style={{ fontSize: 28, fontWeight: 700 }}>
+                Welcome Back, <span className="text-glow">{user?.name?.split(' ')[0] || 'Engineer'}</span>
+              </h1>
+              <p style={{ color: 'var(--text-secondary)', marginTop: 4, fontSize: 13 }}>
+                {user?.institution ? `${user.institution} • ` : ''}Your command center is active.
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Link href="/projects/new" className="btn btn-primary">
+                <span className="material-symbols-outlined">add</span>
+                New Project
+              </Link>
+              <Link href="/ai-advisor" className="btn btn-ghost">
+                <span className="material-symbols-outlined">psychology</span>
+                AI Advisor
+              </Link>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Stat Cards ── */}
+        <div className="grid-4" style={{ marginBottom: 24 }}>
+          {stats.map(s => (
+            <Link key={s.label} href={s.href} style={{ textDecoration: 'none' }}>
+              <div className="stat-card">
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <span className="material-symbols-outlined" style={{ color: s.color, fontSize: 18 }}>{s.icon}</span>
+                  <span style={{ fontSize: 9, color: 'var(--text-muted)', fontFamily: 'JetBrains Mono', letterSpacing: '0.1em', textTransform: 'uppercase' }}>LIVE</span>
+                </div>
+                <div className="stat-value" style={{ color: s.color }}>{s.value}</div>
+                <div className="stat-label">{s.label}</div>
+                <div className="stat-trend" style={{ color: 'var(--text-muted)' }}>
+                  <span className="material-symbols-outlined" style={{ fontSize: 12 }}>trending_up</span>
+                  {s.trend}
+                </div>
+              </div>
+            </Link>
+          ))}
+        </div>
+
+        {/* ── Main Grid ── */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 20 }}>
+
+          {/* ─── Left Column ─── */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+            {/* Network Throughput Chart */}
+            <div className="card" style={{ padding: 20, position: 'relative', overflow: 'hidden' }}>
+              <div className="card-accent-top" />
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 }}>
+                <div>
+                  <div className="section-title" style={{ marginBottom: 6 }}>Network Throughput</div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                    <span style={{ fontFamily: 'Space Grotesk', fontSize: 32, fontWeight: 700, color: 'var(--cyan)' }}>
+                      {(3 + Math.random() * 2).toFixed(1)}
+                    </span>
+                    <span style={{ fontSize: 14, color: 'var(--text-muted)' }}>TB/s</span>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {['US-EAST', 'EU-WEST'].map((r, i) => (
+                    <span key={r} style={{
+                      fontSize: 10, padding: '3px 8px', borderRadius: 4, fontFamily: 'JetBrains Mono', fontWeight: 600,
+                      background: i === 0 ? 'var(--cyan-dim)' : 'rgba(255,255,255,0.04)',
+                      color: i === 0 ? 'var(--cyan)' : 'var(--text-muted)',
+                      border: `1px solid ${i === 0 ? 'rgba(0,212,255,0.25)' : 'var(--border)'}`,
+                    }}>{r}</span>
+                  ))}
+                </div>
+              </div>
+              <AreaChart data={throughput} color="#00d4ff" height={80} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
+                {['0:00','6:00','12:00','18:00','24:00'].map(t => (
+                  <span key={t} className="chart-label">{t}</span>
+                ))}
+              </div>
+            </div>
+
+            {/* Active Sprints */}
+            <div>
+              <div className="section-header">
+                <span className="section-title">Active Sprints</span>
+                <Link href="/projects" style={{ color: 'var(--cyan)', fontSize: 12, textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  View All <span className="material-symbols-outlined" style={{ fontSize: 14 }}>arrow_forward</span>
+                </Link>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {projects.slice(0, 4).length === 0 ? (
+                  <div className="card" style={{ padding: 32, textAlign: 'center' }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: 40, color: 'var(--text-muted)', marginBottom: 12, display: 'block' }}>rocket_launch</span>
+                    <p style={{ color: 'var(--text-muted)', marginBottom: 16, fontSize: 13 }}>No projects yet. Launch your first sprint.</p>
+                    <Link href="/projects/new" className="btn btn-outline" style={{ display: 'inline-flex' }}>
+                      <span className="material-symbols-outlined">add</span>
+                      Create Project
+                    </Link>
+                  </div>
+                ) : projects.slice(0, 4).map(p => <SprintCard key={p.id} project={p} />)}
+              </div>
+            </div>
+          </div>
+
+          {/* ─── Right Column ─── */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+            {/* AI Optimizer Donut */}
+            <div className="card ai-panel" style={{ padding: 20, position: 'relative', overflow: 'hidden' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
+                <span className="material-symbols-outlined" style={{ color: '#a78bfa', fontSize: 18 }}>auto_awesome</span>
+                <span style={{ fontFamily: 'Space Grotesk', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#a78bfa' }}>AI Optimizer</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 14 }}>
+                <DonutGauge value={aiScore} size={110} color="#a78bfa" label="efficiency" />
+              </div>
+              <div style={{ background: 'rgba(124,58,237,0.06)', border: '1px solid rgba(124,58,237,0.15)', borderRadius: 8, padding: '10px 12px', marginBottom: 14 }}>
+                <div style={{ fontSize: 10, color: '#a78bfa', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>Recommendation</div>
+                <p style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                  {apps.length > 0
+                    ? `You have ${apps.length} active application${apps.length > 1 ? 's' : ''}. Check project status to improve match rate.`
+                    : 'Update your skill profile to unlock AI-powered project recommendations and improve match scores.'}
+                </p>
+              </div>
+              <Link href="/ai-advisor" className="btn btn-outline" style={{ width: '100%', justifyContent: 'center', borderColor: 'rgba(124,58,237,0.4)', color: '#a78bfa', fontSize: 12 }}>
+                <span className="material-symbols-outlined" style={{ fontSize: 16 }}>rocket_launch</span>
+                Launch AI Lab
+              </Link>
+            </div>
+
+            {/* System Logs */}
+            <div className="card" style={{ padding: '4px 0', overflow: 'hidden' }}>
+              <div style={{ padding: '12px 16px 8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border-subtle)' }}>
+                <span className="section-title">System Logs</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span className="dot dot-green dot-pulse" style={{ width: 6, height: 6 }} />
+                  <span style={{ fontSize: 9, color: 'var(--green)', fontFamily: 'JetBrains Mono', letterSpacing: '0.06em' }}>LIVE</span>
+                </div>
+              </div>
+              <div style={{ padding: '4px 16px 8px' }}>
+                {logs.map(l => (
+                  <div key={l.id} className="log-item">
+                    <span style={{ fontFamily: 'JetBrains Mono', fontSize: 10, color: 'var(--text-muted)', flexShrink: 0, minWidth: 52 }}>{l.time}</span>
+                    <LogLevel type={l.type} />
+                    <span style={{ fontSize: 11, color: l.read === false ? 'var(--text-primary)' : 'var(--text-secondary)', lineHeight: 1.4, flex: 1 }}>{l.msg}</span>
                   </div>
                 ))}
               </div>
-            )}
-          </div>
-
-          {/* Applications */}
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold">My Applications</h2>
             </div>
-            {applications.length === 0 ? (
-              <div className="card text-center py-8">
-                <div className="text-2xl mb-2">📩</div>
-                <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No applications yet</p>
-                <Link href="/projects" className="btn btn-secondary text-xs mt-3">Browse Projects</Link>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {applications.slice(0, 4).map((app) => (
-                  <Link key={app.id} href={`/projects/${app.project_id}`} className="card block py-3 px-4 group">
-                    <p className="text-sm font-medium group-hover:text-[var(--accent)] transition-colors">{app.title}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="badge text-xs py-0"
-                            style={{
-                              background: getStatusStyle(app.status).bg,
-                              color: getStatusStyle(app.status).color,
-                              borderColor: getStatusStyle(app.status).border,
-                            }}>
-                        {app.status}
-                      </span>
-                      <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                        {new Date(app.created_at).toLocaleDateString()}
-                      </span>
+
+            {/* Quick Actions */}
+            <div>
+              <div className="section-header"><span className="section-title">Quick Actions</span></div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {[
+                  { href: '/projects',   icon: 'search',    label: 'Browse Projects',       color: 'var(--cyan)' },
+                  { href: '/profile',    icon: 'tune',      label: 'Update Skills',          color: '#a78bfa' },
+                  { href: '/ai-advisor', icon: 'psychology',label: 'AI Roadmap Generator',  color: 'var(--green)' },
+                ].map(a => (
+                  <Link key={a.href} href={a.href} style={{ textDecoration: 'none' }}>
+                    <div className="card card-glow" style={{ padding: '11px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ width: 30, height: 30, borderRadius: 8, background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <span className="material-symbols-outlined" style={{ color: a.color, fontSize: 16 }}>{a.icon}</span>
+                      </div>
+                      <span style={{ fontSize: 13, fontWeight: 500, flex: 1 }}>{a.label}</span>
+                      <span className="material-symbols-outlined" style={{ color: 'var(--text-muted)', fontSize: 16 }}>chevron_right</span>
                     </div>
                   </Link>
                 ))}
               </div>
-            )}
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </AppLayout>
   );
 }
