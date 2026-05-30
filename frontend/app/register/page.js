@@ -1,24 +1,62 @@
 'use client';
+// app/register/page.js — Firebase-powered registration with Google OAuth + email/password
+
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import api from '@/lib/api';
+import { useAuth } from '@/lib/AuthContext';
+import GoogleSignInButton from '@/components/GoogleSignInButton';
 
 export default function RegisterPage() {
   const router = useRouter();
-  const [form, setForm] = useState({ name: '', email: '', password: '', institution: '' });
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const { loginWithGoogle, registerWithEmail } = useAuth();
 
-  async function handleSubmit(e) {
-    e.preventDefault();
-    setError(''); setLoading(true);
+  const [form, setForm]           = useState({ name: '', email: '', password: '', institution: '' });
+  const [confirmPass, setConfirm] = useState('');
+  const [error, setError]         = useState('');
+  const [loading, setLoading]     = useState(false);
+  const [googleLoad, setGoogleLoad] = useState(false);
+
+  // ─── Google Sign-Up (same flow as Sign-In — Firebase handles both) ─────────
+  async function handleGoogle() {
+    setError(''); setGoogleLoad(true);
     try {
-      await api.post('/auth/register', form);
-      await api.post('/auth/login', { email: form.email, password: form.password });
+      await loginWithGoogle();
       router.push('/dashboard');
     } catch (err) {
-      setError(err.response?.data?.error || 'Registration failed.');
+      if (err.code === 'auth/popup-closed-by-user') {
+        setError('Sign-up cancelled. Please try again.');
+      } else if (err.code === 'auth/popup-blocked') {
+        setError('Popup blocked by your browser. Please allow popups for this site.');
+      } else {
+        setError(err.message || 'Google sign-up failed. Please try again.');
+      }
+    } finally { setGoogleLoad(false); }
+  }
+
+  // ─── Email / Password Registration ────────────────────────────────────────
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError('');
+
+    if (!form.name.trim()) return setError('Full name is required.');
+    if (form.password.length < 8) return setError('Password must be at least 8 characters.');
+    if (form.password !== confirmPass) return setError('Passwords do not match.');
+
+    setLoading(true);
+    try {
+      await registerWithEmail(form.email, form.password, form.name.trim(), form.institution.trim());
+      router.push('/dashboard');
+    } catch (err) {
+      if (err.code === 'auth/email-already-in-use') {
+        setError('An account with this email already exists. Try signing in instead.');
+      } else if (err.code === 'auth/weak-password') {
+        setError('Password is too weak. Please use at least 8 characters with a mix of letters and numbers.');
+      } else if (err.code === 'auth/invalid-email') {
+        setError('Please enter a valid email address.');
+      } else {
+        setError(err.message || 'Registration failed. Please try again.');
+      }
     } finally { setLoading(false); }
   }
 
@@ -39,7 +77,7 @@ export default function RegisterPage() {
           <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: 'linear-gradient(90deg,transparent,var(--cyan),var(--purple),transparent)' }} />
 
           <h1 style={{ fontFamily: 'Space Grotesk', fontSize: 24, fontWeight: 700, marginBottom: 4 }}>Create Account</h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 28 }}>Join the CONNECT engineering network</p>
+          <p style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 24 }}>Join the CONNECT engineering network</p>
 
           {error && (
             <div style={{ background: 'rgba(255,71,87,0.1)', border: '1px solid rgba(255,71,87,0.3)', borderRadius: 8, padding: '10px 14px', marginBottom: 20, color: 'var(--red)', fontSize: 13, display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -47,6 +85,24 @@ export default function RegisterPage() {
               {error}
             </div>
           )}
+
+          {/* Google Sign-Up — fastest path */}
+          <GoogleSignInButton onClick={handleGoogle} loading={googleLoad} text="Sign up with Google" />
+
+          {/* Free badge */}
+          <div style={{ display: 'flex', justifyContent: 'center', marginTop: 8, marginBottom: 4 }}>
+            <span style={{ fontSize: 11, color: 'var(--green)', fontFamily: 'JetBrains Mono', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span className="material-symbols-outlined" style={{ fontSize: 13 }}>verified</span>
+              FREE — No credit card required
+            </span>
+          </div>
+
+          {/* Divider */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '20px 0' }}>
+            <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+            <span style={{ fontSize: 12, color: 'var(--text-muted)', fontFamily: 'JetBrains Mono' }}>OR REGISTER WITH EMAIL</span>
+            <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+          </div>
 
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div>
@@ -60,7 +116,7 @@ export default function RegisterPage() {
                 onChange={e => setForm(f => ({ ...f, email: e.target.value }))} required />
             </div>
             <div>
-              <label className="input-label">Institution (Optional)</label>
+              <label className="input-label">Institution <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(Optional)</span></label>
               <input className="input" type="text" placeholder="MIT, Stanford, IIT..." value={form.institution}
                 onChange={e => setForm(f => ({ ...f, institution: e.target.value }))} />
             </div>
@@ -69,9 +125,16 @@ export default function RegisterPage() {
               <input className="input" type="password" placeholder="Min 8 characters" value={form.password}
                 onChange={e => setForm(f => ({ ...f, password: e.target.value }))} required minLength={8} />
             </div>
-            <button type="submit" className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', padding: 12, fontSize: 15, marginTop: 4 }} disabled={loading}>
+            <div>
+              <label className="input-label">Confirm Password</label>
+              <input className="input" type="password" placeholder="Re-enter password" value={confirmPass}
+                onChange={e => setConfirm(e.target.value)} required minLength={8} />
+            </div>
+            <button type="submit" className="btn btn-primary" id="email-register-btn"
+              style={{ width: '100%', justifyContent: 'center', padding: 12, fontSize: 15, marginTop: 4 }}
+              disabled={loading || googleLoad}>
               {loading ? <span className="spinner" /> : <span className="material-symbols-outlined">person_add</span>}
-              {loading ? 'Creating Account...' : 'Create Account'}
+              {loading ? 'Creating Account...' : 'Create Free Account'}
             </button>
           </form>
 
@@ -83,7 +146,7 @@ export default function RegisterPage() {
 
         <div style={{ textAlign: 'center', marginTop: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
           <span className="dot dot-green" />
-          <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'JetBrains Mono' }}>SYSTEMS ONLINE</span>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'JetBrains Mono' }}>SYSTEMS ONLINE • 100% FREE TIER</span>
         </div>
       </div>
     </div>
