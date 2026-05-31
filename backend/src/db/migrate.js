@@ -87,6 +87,22 @@ const migrations = [
   )`,
 
   // ──────────────────────────────────────────────
+  // FIREBASE AUTH MIGRATION
+  // Adds firebase_uid for OAuth users (Google Sign-In, etc.)
+  // Makes password_hash nullable so Google-only accounts don't need a local password.
+  // Both ALTER statements are safe to re-run (idempotent via IF NOT EXISTS / IF EXISTS).
+  // ──────────────────────────────────────────────
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS firebase_uid TEXT`,
+
+  `CREATE UNIQUE INDEX IF NOT EXISTS users_firebase_uid_idx
+   ON users (firebase_uid)
+   WHERE firebase_uid IS NOT NULL`,
+
+  // Make password_hash nullable for Firebase/OAuth-only accounts
+  // This ALTER is safe: existing rows keep their password_hash value unchanged.
+  `ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL`,
+
+  // ──────────────────────────────────────────────
   // SEED: common engineering skills (idempotent via INSERT … ON CONFLICT)
   // ──────────────────────────────────────────────
   `INSERT INTO skills (name, category) VALUES
