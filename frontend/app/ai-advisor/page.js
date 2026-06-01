@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import AppLayout from '@/components/AppLayout';
+import { useAuth } from '@/lib/AuthContext';
 import api from '@/lib/api';
 
 const MODES = [
@@ -149,6 +150,7 @@ function RenderValue({ val, depth = 0 }) {
 
 export default function AIAdvisorPage() {
   const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
   const [mode, setMode]     = useState('advisor');
   const [loading, setLoading] = useState(false);
   const [input, setInput]   = useState('');
@@ -175,8 +177,8 @@ export default function AIAdvisorPage() {
   const bottomRef = useRef(null);
 
   useEffect(() => {
-    api.get('/auth/me').catch(() => router.push('/login'));
-  }, []);
+    if (!authLoading && !user) router.push('/login');
+  }, [authLoading, user]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });

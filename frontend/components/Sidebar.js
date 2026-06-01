@@ -2,6 +2,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
+import { useAuth } from '@/lib/AuthContext';
 import api from '@/lib/api';
 
 const navItems = [
@@ -17,21 +18,25 @@ const bottomItems = [
 ];
 
 export default function Sidebar() {
-  const pathname = usePathname();
-  const router   = useRouter();
-  const [user, setUser]     = useState(null);
-  const [unread, setUnread] = useState(0);
+  const pathname  = usePathname();
+  const router    = useRouter();
+  const { user, fbUser, logout } = useAuth();
+  const [unread, setUnread]   = useState(0);
   const [tooltip, setTooltip] = useState(null);
+  const [avatarError, setAvatarError] = useState(false);
 
   useEffect(() => {
-    api.get('/auth/me').then(r => setUser(r.data)).catch(() => {});
     api.get('/notifications').then(r => setUnread(r.data.unread_count || 0)).catch(() => {});
   }, []);
 
   async function handleLogout() {
-    try { await api.get('/auth/logout'); } catch {}
+    try { await logout(); } catch {}
     router.push('/login');
   }
+
+  // Prefer Google profile photo, fallback to initials
+  const photoURL   = !avatarError && (fbUser?.photoURL || user?.avatar_url);
+  const initials   = (user?.full_name || fbUser?.displayName || user?.email || 'U')[0].toUpperCase();
 
   function isActive(href) {
     if (href === '/dashboard') return pathname === '/dashboard';
@@ -91,17 +96,25 @@ export default function Sidebar() {
         </div>
 
         <div className="sidebar-item-wrap"
-          onMouseEnter={() => setTooltip(user?.name || 'Profile')}
+          onMouseEnter={() => setTooltip(user?.full_name || 'Profile')}
           onMouseLeave={() => setTooltip(null)}
         >
           <Link href="/profile" style={{ textDecoration: 'none' }}>
-            <div className="sidebar-avatar">
-              <span>{(user?.name || user?.email || 'U')[0].toUpperCase()}</span>
+            <div className="sidebar-avatar" style={{ overflow: 'hidden', padding: 0 }}>
+              {photoURL ? (
+                <img src={photoURL} alt={initials} width={32} height={32}
+                  style={{ objectFit: 'cover', width: '100%', height: '100%', borderRadius: '50%' }}
+                  referrerPolicy="no-referrer"
+                  onError={() => setAvatarError(true)}
+                />
+              ) : (
+                <span>{initials}</span>
+              )}
               <span className="sidebar-avatar-dot" />
             </div>
           </Link>
-          {tooltip === (user?.name || 'Profile') && (
-            <div className="sidebar-tooltip">{user?.name || 'Profile'}</div>
+          {tooltip === (user?.full_name || 'Profile') && (
+            <div className="sidebar-tooltip">{user?.full_name || 'Profile'}</div>
           )}
         </div>
       </div>
