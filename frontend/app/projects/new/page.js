@@ -3,10 +3,12 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import AppLayout from '@/components/AppLayout';
+import { useAuth } from '@/lib/AuthContext';
 import api from '@/lib/api';
 
 export default function NewProjectPage() {
   const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
   const [allSkills, setAllSkills] = useState([]);
   const [form, setForm] = useState({ title: '', description: '', status: 'recruiting' });
   const [selectedSkills, setSelectedSkills] = useState([]);
@@ -16,7 +18,10 @@ export default function NewProjectPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    api.get('/auth/me').catch(() => router.push('/login'));
+    if (!authLoading && !user) router.push('/login');
+  }, [authLoading, user]);
+
+  useEffect(() => {
     api.get('/skills').then(r => setAllSkills(r.data.skills || [])).catch(() => {});
   }, []);
 

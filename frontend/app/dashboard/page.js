@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import AppLayout from '@/components/AppLayout';
+import { useAuth } from '@/lib/AuthContext';
 import api from '@/lib/api';
 
 /* ── Mini area chart (SVG) ── */
@@ -112,7 +113,7 @@ function makeThroughputData() {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [user, setUser]         = useState(null);
+  const { user, loading: authLoading } = useAuth();
   const [projects, setProjects] = useState([]);
   const [notifs, setNotifs]     = useState([]);
   const [apps, setApps]         = useState([]);
@@ -120,24 +121,28 @@ export default function DashboardPage() {
   const [throughput]            = useState(makeThroughputData);
   const [aiScore]               = useState(92);
 
+  // Redirect unauthenticated users once Firebase has resolved session
   useEffect(() => {
+    if (!authLoading && !user) router.push('/login');
+  }, [authLoading, user]);
+
+  useEffect(() => {
+    if (authLoading || !user) return; // wait for auth before fetching
     async function load() {
       try {
-        const [me, proj, n, a] = await Promise.all([
-          api.get('/auth/me'),
+        const [proj, n, a] = await Promise.all([
           api.get('/projects'),
           api.get('/notifications'),
           api.get('/applications/mine'),
         ]);
-        setUser(me.data);
         setProjects(proj.data.projects || []);
         setNotifs(n.data.notifications || []);
         setApps(a.data.applications || []);
-      } catch { router.push('/login'); }
+      } catch { /* silently fail — auth redirect handled above */ }
       finally { setLoading(false); }
     }
     load();
-  }, []);
+  }, [authLoading, user]);
 
   const stats = [
     { icon: 'account_tree', label: 'Active Sprints',  value: projects.length,                          color: 'var(--cyan)',   trend: '+2 this week', href: '/projects' },
@@ -189,7 +194,7 @@ export default function DashboardPage() {
                 <span className="page-eyebrow-text">System V3.4.0 Active • All nodes operational</span>
               </div>
               <h1 style={{ fontSize: 28, fontWeight: 700 }}>
-                Welcome Back, <span className="text-glow">{user?.name?.split(' ')[0] || 'Engineer'}</span>
+                Welcome Back, <span className="text-glow">{user?.full_name?.split(' ')[0] || 'Engineer'}</span>
               </h1>
               <p style={{ color: 'var(--text-secondary)', marginTop: 4, fontSize: 13 }}>
                 {user?.institution ? `${user.institution} • ` : ''}Your command center is active.
