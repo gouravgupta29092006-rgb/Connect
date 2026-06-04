@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import AppLayout from '@/components/AppLayout';
+import { useAuth } from '@/lib/AuthContext';
 import api from '@/lib/api';
 
 const STATUS_OPTIONS = ['all', 'recruiting', 'active', 'completed'];
@@ -133,6 +134,7 @@ function ProjectCard({ p, onApply, applying, applyMsg }) {
 export default function ProjectsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { user, loading: authLoading } = useAuth();
   const [tab, setTab]           = useState('projects');
   const [projects, setProjects] = useState([]);
   const [engineers, setEngineers] = useState([]);
@@ -146,6 +148,11 @@ export default function ProjectsPage() {
   const [selectedDomains, setSelectedDomains] = useState([]);
   const [selectedSkills, setSelectedSkills]   = useState([]);
   const [availability, setAvailability]       = useState('');
+
+  // Redirect unauthenticated users once Firebase has resolved
+  useEffect(() => {
+    if (!authLoading && !user) router.push('/login');
+  }, [authLoading, user]);
 
   function toggleFilter(arr, setArr, val) {
     setArr(prev => prev.includes(val) ? prev.filter(x => x !== val) : [...prev, val]);
@@ -176,9 +183,10 @@ export default function ProjectsPage() {
   }
 
   useEffect(() => {
+    if (authLoading || !user) return; // wait for Firebase session
     if (tab === 'projects') loadProjects();
     else loadEngineers();
-  }, [tab, status]);
+  }, [tab, status, authLoading, user]);
 
   async function handleApply(projectId) {
     setApplying(projectId);

@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import AppLayout from '@/components/AppLayout';
+import { useAuth } from '@/lib/AuthContext';
 import api from '@/lib/api';
 
 const CATEGORIES = [
@@ -13,10 +14,16 @@ const CATEGORIES = [
 
 export default function NotificationsPage() {
   const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
   const [notifs, setNotifs]   = useState([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter]   = useState('all');
   const [marking, setMarking] = useState(null);
+
+  // Redirect unauthenticated users once Firebase has resolved session
+  useEffect(() => {
+    if (!authLoading && !user) router.push('/login');
+  }, [authLoading, user]);
 
   async function load() {
     try {
@@ -27,12 +34,15 @@ export default function NotificationsPage() {
     } finally { setLoading(false); }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    if (!authLoading && user) load();
+  }, [authLoading, user]);
 
   async function markRead(id) {
     setMarking(id);
     try {
-      await api.patch(`/api/notifications/${id}/read`);
+      // Fix: was '/api/notifications/...' which double-prefixes to /api/api/notifications
+      await api.patch(`/notifications/${id}/read`);
       setNotifs(n => n.map(x => x.id === id ? { ...x, is_read: true } : x));
     } catch {} finally { setMarking(null); }
   }
