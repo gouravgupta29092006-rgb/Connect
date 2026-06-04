@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import AppLayout from '@/components/AppLayout';
+import { useAuth } from '@/lib/AuthContext';
 import api from '@/lib/api';
 
 /* ── Core Alignment donut ── */
@@ -42,6 +43,7 @@ const LEVEL_BADGES = { expert: 'badge-cyan', advanced: 'badge-purple', intermedi
 
 export default function ProfilePage() {
   const router = useRouter();
+  const { user: authUser, loading: authLoading } = useAuth();
   const [profile, setProfile]       = useState(null);
   const [myProjects, setMyProjects] = useState([]);
   const [myApps, setMyApps]         = useState([]);
@@ -50,11 +52,17 @@ export default function ProfilePage() {
   const [saving, setSaving]         = useState(false);
   const [addingSkill, setAddingSkill] = useState(false);
   const [skillSearch, setSkillSearch] = useState('');
-  const [form, setForm] = useState({ name: '', institution: '', bio: '', github: '', location: '' });
+  const [form, setForm] = useState({ full_name: '', institution: '', bio: '', github: '', location: '' });
   const [saved, setSaved] = useState(false);
   const [tab, setTab] = useState('overview');
 
+  // Redirect unauthenticated users once Firebase has resolved
   useEffect(() => {
+    if (!authLoading && !authUser) router.push('/login');
+  }, [authLoading, authUser]);
+
+  useEffect(() => {
+    if (authLoading || !authUser) return; // wait for Firebase session
     async function load() {
       try {
         const [prof, skills, proj, apps] = await Promise.all([
@@ -65,7 +73,8 @@ export default function ProfilePage() {
         ]);
         const p = prof.data.profile;
         setProfile(p);
-        setForm({ name: p.name || '', institution: p.institution || '', bio: p.bio || '', github: p.github || '', location: p.location || '' });
+        // Fix: use full_name and github_url — actual DB column names
+        setForm({ full_name: p.full_name || '', institution: p.institution || '', bio: p.bio || '', github: p.github_url || '', location: p.location || '' });
         setAllSkills(skills.data.skills || []);
         setMyProjects((proj.data.projects || []).filter(pr => pr.owner_id === p.id || pr.is_owner));
         setMyApps(apps.data.applications || []);
@@ -73,7 +82,7 @@ export default function ProfilePage() {
       finally { setLoading(false); }
     }
     load();
-  }, []);
+  }, [authLoading, authUser]);
 
   const telemetry = [
     ...myApps.slice(0, 8).map(a => ({
@@ -115,8 +124,9 @@ export default function ProfilePage() {
     </AppLayout>
   );
 
+  // Fix: use full_name — actual DB column name (was profile.name which is always undefined)
   const alignmentScore = Math.min(100, 40 + (profile.skills?.length || 0) * 8);
-  const initials = (profile.name || 'U').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  const initials = (profile.full_name || 'U').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 
   const mySkills = profile.skills || [];
   const filteredAvailable = ALL_SKILLS.filter(s =>
@@ -150,7 +160,7 @@ export default function ProfilePage() {
               </div>
               <div style={{ flex: 1, paddingBottom: 4 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                  <h1 style={{ fontSize: 22, fontWeight: 700, fontFamily: 'Space Grotesk' }}>{profile.name}</h1>
+                  <h1 style={{ fontSize: 22, fontWeight: 700, fontFamily: 'Space Grotesk' }}>{profile.full_name}</h1>
                   <span className="badge badge-cyan" style={{ fontSize: 9 }}>
                     <span className="material-symbols-outlined" style={{ fontSize: 11 }}>verified</span>
                     VERIFIED
@@ -390,7 +400,7 @@ export default function ProfilePage() {
                 <div className="grid-2" style={{ gap: 14, marginBottom: 14 }}>
                   <div>
                     <label className="input-label">Full Name</label>
-                    <input className="input" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Dr. Jane Smith" />
+                    <input className="input" value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} placeholder="Dr. Jane Smith" />
                   </div>
                   <div>
                     <label className="input-label">Institution</label>

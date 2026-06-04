@@ -3,13 +3,14 @@ import { useEffect, useState } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import AppLayout from '@/components/AppLayout';
+import { useAuth } from '@/lib/AuthContext';
 import api from '@/lib/api';
 
 export default function ProjectDetailPage() {
   const router   = useRouter();
   const { id }   = useParams();
+  const { user, loading: authLoading } = useAuth();
   const [project, setProject]   = useState(null);
-  const [me, setMe]             = useState(null);
   const [tab, setTab]           = useState('overview');
   const [applications, setApplications] = useState([]);
   const [aiMatch, setAiMatch]   = useState(null);
@@ -18,30 +19,38 @@ export default function ProjectDetailPage() {
   const [applyMsg, setApplyMsg] = useState('');
   const [deciding, setDeciding] = useState(null);
 
+  // Redirect unauthenticated users once Firebase has resolved
   useEffect(() => {
+    if (!authLoading && !user) router.push('/login');
+  }, [authLoading, user]);
+
+  useEffect(() => {
+    if (authLoading || !user || !id) return;
     async function load() {
       try {
-        const [proj, meRes] = await Promise.all([api.get(`/api/projects/${id}`), api.get('/api/auth/me')]);
-        setProject(proj.data.project);
-        setMe(meRes.data);
+        // Fix: removed /api prefix — Axios client already adds /api
+        const { data } = await api.get(`/projects/${id}`);
+        setProject(data.project);
       } catch (err) {
         if (err.response?.status === 401) router.push('/login');
         else if (err.response?.status === 404) router.push('/projects');
       } finally { setLoading(false); }
     }
     load();
-  }, [id]);
+  }, [id, authLoading, user]);
 
   async function loadApplications() {
     try {
-      const { data } = await api.get(`/api/projects/${id}/applications`);
+      // Fix: removed /api prefix — Axios client already adds /api
+      const { data } = await api.get(`/projects/${id}/applications`);
       setApplications(data.applications || []);
     } catch {}
   }
 
   async function loadAiMatch() {
     try {
-      const { data } = await api.get(`/api/ai/match/${id}`);
+      // Fix: removed /api prefix
+      const { data } = await api.get(`/ai/match/${id}`);
       setAiMatch(data);
     } catch {}
   }
@@ -55,7 +64,8 @@ export default function ProjectDetailPage() {
   async function handleApply() {
     setApplying(true); setApplyMsg('');
     try {
-      await api.post(`/api/projects/${id}/apply`);
+      // Fix: removed /api prefix
+      await api.post(`/projects/${id}/apply`);
       setApplyMsg('success:Application sent!');
     } catch (err) {
       setApplyMsg('error:' + (err.response?.data?.error || 'Application failed.'));
@@ -65,12 +75,14 @@ export default function ProjectDetailPage() {
   async function handleDecide(appId, status) {
     setDeciding(appId);
     try {
-      await api.patch(`/api/applications/${appId}`, { status });
+      // Fix: removed /api prefix
+      await api.patch(`/applications/${appId}`, { status });
       setApplications(a => a.map(x => x.id === appId ? { ...x, status } : x));
     } catch {} finally { setDeciding(null); }
   }
 
-  const isOwner = me && project && me.id === project.owner_id;
+  // Use Firebase user from context instead of separate /auth/me call
+  const isOwner = user && project && user.id === project.owner_id;
   const msgType = applyMsg.startsWith('success') ? 'success' : 'error';
   const msgText = applyMsg.replace(/^(success|error):/, '');
 
