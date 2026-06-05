@@ -3,14 +3,15 @@ import { useEffect, useState, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import AppLayout from '@/components/AppLayout';
+import { useAuth } from '@/lib/AuthContext';
 import api from '@/lib/api';
 
 export default function ChatPage() {
   const router   = useRouter();
   const { id }   = useParams();
+  const { user, loading: authLoading } = useAuth();
   const [project, setProject] = useState(null);
   const [messages, setMessages] = useState([]);
-  const [me, setMe]     = useState(null);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [socketReady, setSocketReady] = useState(false);
@@ -18,20 +19,27 @@ export default function ChatPage() {
   const socketRef = useRef(null);
   const bottomRef = useRef(null);
 
+  // Redirect unauthenticated users once Firebase has resolved
   useEffect(() => {
+    if (!authLoading && !user) router.push('/login');
+  }, [authLoading, user]);
+
+  useEffect(() => {
+    if (authLoading || !user || !id) return;
+
     async function init() {
       try {
-        const [proj, meRes] = await Promise.all([api.get(`/api/projects/${id}`), api.get('/api/auth/me')]);
-        setProject(proj.data.project);
-        setMe(meRes.data);
+        // Fix: removed /api prefix — Axios client already adds /api
+        const { data } = await api.get(`/projects/${id}`);
+        setProject(data.project);
       } catch (err) {
         if (err.response?.status === 401) router.push('/login');
         return;
       } finally { setLoading(false); }
 
-      // Load chat history
+      // Load chat history — Fix: removed /api prefix
       try {
-        const { data } = await api.get(`/api/chat/${id}/messages`);
+        const { data } = await api.get(`/chat/${id}/messages`);
         setMessages(data.messages || []);
       } catch {}
 
@@ -57,7 +65,7 @@ export default function ChatPage() {
     }
     init();
     return () => { socketRef.current?.disconnect(); };
-  }, [id]);
+  }, [id, authLoading, user]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -73,8 +81,9 @@ export default function ChatPage() {
       if (socketRef.current?.connected) {
         socketRef.current.emit('send_message', { projectId: id, content: text });
       } else {
-        await api.post(`/api/chat/${id}/messages`, { content: text });
-        const { data } = await api.get(`/api/chat/${id}/messages`);
+        // Fix: removed /api prefix — Axios client already adds /api
+        await api.post(`/chat/${id}/messages`, { content: text });
+        const { data } = await api.get(`/chat/${id}/messages`);
         setMessages(data.messages || []);
       }
     } catch (err) {
@@ -135,7 +144,7 @@ export default function ChatPage() {
             </div>
           ) : (
             messages.map((msg, i) => {
-              const isOwn = msg.sender_id === me?.id || msg.user_id === me?.id;
+              const isOwn = msg.sender_id === user?.id || msg.user_id === user?.id;
               const senderName = msg.sender_name || msg.user_name || 'Engineer';
               const prevSender = i > 0 && (messages[i-1].sender_id === msg.sender_id || messages[i-1].user_id === msg.user_id);
               return (
