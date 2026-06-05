@@ -11,7 +11,7 @@ export default function RegisterPage() {
   const router = useRouter();
   const { loginWithGoogle, registerWithEmail } = useAuth();
 
-  const [form, setForm]           = useState({ name: '', email: '', password: '', institution: '' });
+  const [form, setForm]           = useState({ full_name: '', email: '', password: '', institution: '' });
   const [confirmPass, setConfirm] = useState('');
   const [error, setError]         = useState('');
   const [loading, setLoading]     = useState(false);
@@ -39,13 +39,13 @@ export default function RegisterPage() {
     e.preventDefault();
     setError('');
 
-    if (!form.name.trim()) return setError('Full name is required.');
+    if (!form.full_name.trim()) return setError('Full name is required.');
     if (form.password.length < 8) return setError('Password must be at least 8 characters.');
     if (form.password !== confirmPass) return setError('Passwords do not match.');
 
     setLoading(true);
     try {
-      await registerWithEmail(form.email, form.password, form.name.trim(), form.institution.trim());
+      await registerWithEmail(form.email, form.password, form.full_name.trim(), form.institution.trim());
       router.push('/dashboard');
     } catch (err) {
       if (err.code === 'auth/email-already-in-use') {
@@ -107,8 +107,8 @@ export default function RegisterPage() {
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div>
               <label className="input-label">Full Name</label>
-              <input className="input" type="text" placeholder="Dr. Jane Smith" value={form.name}
-                onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required />
+              <input className="input" type="text" placeholder="Dr. Jane Smith" value={form.full_name}
+                onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} required />
             </div>
             <div>
               <label className="input-label">Email Address</label>
