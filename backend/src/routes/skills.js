@@ -40,40 +40,84 @@ router.get('/', async (req, res) => {
 
 // ─────────────────────────────────────────────
 // POST /api/skills/assign
-// Body: { skills: [{ skill_id: number, level: 1-5 }, ...] }
-// Upserts all provided skill assignments for the authenticated user.
-// Existing skills are updated, new ones are inserted.
+// Body: { skills: [{ skill_id?, name?, level: string|number }] }
+// Accepts string levels: 'beginner'|'intermediate'|'advanced'|'expert'
+// OR numeric levels 1-5 for backward compatibility.
+// If skill_id is omitted, looks up (or creates) the skill by name.
 // ─────────────────────────────────────────────
+const LEVEL_MAP = {
+  beginner:     1,
+  intermediate: 2,
+  advanced:     3,
+  expert:       4,
+  master:       5,
+};
+
 router.post('/assign', async (req, res) => {
   try {
     const { skills } = req.body;
 
     if (!Array.isArray(skills) || skills.length === 0) {
-      return res.status(400).json({ error: 'skills must be a non-empty array of { skill_id, level }' });
+      return res.status(400).json({ error: 'skills must be a non-empty array' });
     }
 
-    // Validate every entry before touching the DB
-    for (const s of skills) {
-      if (!s.skill_id || typeof s.skill_id !== 'number') {
-        return res.status(400).json({ error: `Invalid skill_id: ${s.skill_id}` });
-      }
-      if (!s.level || s.level < 1 || s.level > 5) {
-        return res.status(400).json({ error: `level must be between 1 and 5, got: ${s.level}` });
-      }
-    }
-
-    // Run all upserts inside a single transaction
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
 
       for (const s of skills) {
+        // ── Resolve level ──────────────────────────────────────────────────
+        let level;
+        if (typeof s.level === 'string') {
+          level = LEVEL_MAP[s.level.toLowerCase()];
+          if (!level) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: `Unknown level string: ${s.level}. Use beginner|intermediate|advanced|expert` });
+          }
+        } else if (typeof s.level === 'number') {
+          level = s.level;
+        } else {
+          level = 2; // default to 'intermediate'
+        }
+        if (level < 1 || level > 5) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ error: `level must be 1-5, got: ${s.level}` });
+        }
+
+        // ── Resolve skill_id ───────────────────────────────────────────────
+        let skillId = s.skill_id ? parseInt(s.skill_id, 10) : null;
+
+        if (!skillId && s.name) {
+          // Look up by name (case-insensitive)
+          const existing = await client.query(
+            `SELECT id FROM skills WHERE LOWER(name) = LOWER($1)`,
+            [s.name.trim()]
+          );
+          if (existing.rows.length > 0) {
+            skillId = existing.rows[0].id;
+          } else {
+            // Auto-create the skill so users can add custom skills
+            const created = await client.query(
+              `INSERT INTO skills (name, category) VALUES ($1, $2)
+               ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+               RETURNING id`,
+              [s.name.trim(), s.category || 'Other']
+            );
+            skillId = created.rows[0].id;
+          }
+        }
+
+        if (!skillId) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ error: 'Each skill must have a skill_id or a name' });
+        }
+
         await client.query(
           `INSERT INTO user_skills (user_id, skill_id, level)
            VALUES ($1, $2, $3)
            ON CONFLICT (user_id, skill_id)
            DO UPDATE SET level = EXCLUDED.level`,
-          [req.user.id, s.skill_id, s.level]
+          [req.user.id, skillId, level]
         );
       }
 
@@ -95,15 +139,24 @@ router.post('/assign', async (req, res) => {
       [req.user.id]
     );
 
+    // Map numeric level back to string for the frontend
+    const levelNames = { 1: 'beginner', 2: 'intermediate', 3: 'advanced', 4: 'expert', 5: 'master' };
+    const assignedWithNames = updated.rows.map(r => ({
+      ...r,
+      level: levelNames[r.level] || String(r.level),
+    }));
+
     return res.status(200).json({
       message: `${skills.length} skill(s) assigned successfully`,
-      skills: updated.rows,
+      assigned: assignedWithNames,
+      skills: assignedWithNames,
     });
   } catch (err) {
     console.error('POST /skills/assign error:', err.message);
     return res.status(500).json({ error: 'Failed to assign skills: ' + err.message });
   }
 });
+
 
 // ─────────────────────────────────────────────
 // DELETE /api/skills/:skillId

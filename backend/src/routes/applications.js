@@ -226,7 +226,8 @@ router.get('/applications/mine', async (req, res) => {
     const result = await pool.query(
       `SELECT
          a.id, a.status, a.message, a.created_at,
-         p.id AS project_id, p.title, p.description, p.status AS project_status,
+         p.id AS project_id, p.title, p.title AS project_title,
+         p.description, p.status AS project_status,
          u.full_name AS owner_name
        FROM applications a
        JOIN projects p ON p.id = a.project_id
@@ -249,7 +250,7 @@ router.get('/applications/mine', async (req, res) => {
 router.get('/notifications', async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT id, content, is_read, created_at
+      `SELECT id, content AS message, is_read, created_at
        FROM notifications
        WHERE user_id = $1
        ORDER BY created_at DESC
