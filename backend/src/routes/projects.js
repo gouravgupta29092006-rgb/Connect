@@ -17,8 +17,35 @@ router.use(authMiddleware);
 
 // ─────────────────────────────────────────────
 // POST /api/projects
-// Body: { title, description, status?, skills: [{ skill_id, importance }] }
+// Body: { title, description, status?, skills: [{ skill_id|id, importance|level }] }
+// Accepts string levels: 'beginner'|'intermediate'|'advanced'|'expert'
+// mapped to importance 1-5. Accepts 'id' as alias for 'skill_id'.
 // ─────────────────────────────────────────────
+const SKILL_LEVEL_MAP = {
+  beginner:     1,
+  intermediate: 2,
+  advanced:     3,
+  expert:       4,
+  master:       5,
+};
+
+function resolveSkillPayload(s) {
+  // Accept skill_id OR id
+  const skillId = s.skill_id ? parseInt(s.skill_id, 10) : (s.id ? parseInt(s.id, 10) : null);
+  // Accept importance (number) OR level (string)
+  let importance;
+  if (typeof s.importance === 'number') {
+    importance = s.importance;
+  } else if (typeof s.level === 'string') {
+    importance = SKILL_LEVEL_MAP[s.level.toLowerCase()] || 2;
+  } else if (typeof s.importance === 'string') {
+    importance = SKILL_LEVEL_MAP[s.importance.toLowerCase()] || parseInt(s.importance, 10) || 2;
+  } else {
+    importance = 2; // default: intermediate
+  }
+  return { skillId, importance };
+}
+
 router.post('/', async (req, res) => {
   try {
     const { title, description, status = 'recruiting', skills = [] } = req.body;
@@ -33,14 +60,17 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'status must be recruiting, active, or completed' });
     }
 
-    // Validate skills array if provided
+    // Validate and normalise skills array
+    const normalisedSkills = [];
     for (const s of skills) {
-      if (!s.skill_id || typeof s.skill_id !== 'number') {
-        return res.status(400).json({ error: `Invalid skill_id: ${s.skill_id}` });
+      const { skillId, importance } = resolveSkillPayload(s);
+      if (!skillId || isNaN(skillId)) {
+        return res.status(400).json({ error: `Invalid skill entry — must have skill_id or id, got: ${JSON.stringify(s)}` });
       }
-      if (!s.importance || s.importance < 1 || s.importance > 5) {
-        return res.status(400).json({ error: `importance must be 1-5, got: ${s.importance}` });
+      if (importance < 1 || importance > 5) {
+        return res.status(400).json({ error: `importance must be 1-5, resolved to: ${importance}` });
       }
+      normalisedSkills.push({ skillId, importance });
     }
 
     const client = await pool.connect();
@@ -57,12 +87,12 @@ router.post('/', async (req, res) => {
       const project = projectResult.rows[0];
 
       // Insert project_skills
-      for (const s of skills) {
+      for (const s of normalisedSkills) {
         await client.query(
           `INSERT INTO project_skills (project_id, skill_id, importance)
            VALUES ($1, $2, $3)
            ON CONFLICT (project_id, skill_id) DO UPDATE SET importance = EXCLUDED.importance`,
-          [project.id, s.skill_id, s.importance]
+          [project.id, s.skillId, s.importance]
         );
       }
 
@@ -82,6 +112,7 @@ router.post('/', async (req, res) => {
     return res.status(500).json({ error: 'Failed to create project: ' + err.message });
   }
 });
+
 
 // ─────────────────────────────────────────────
 // GET /api/projects
@@ -217,10 +248,13 @@ router.put('/:id', async (req, res) => {
       if (Array.isArray(skills)) {
         await client.query('DELETE FROM project_skills WHERE project_id = $1', [id]);
         for (const s of skills) {
-          await client.query(
-            `INSERT INTO project_skills (project_id, skill_id, importance) VALUES ($1, $2, $3)`,
-            [id, s.skill_id, s.importance]
-          );
+          const { skillId, importance } = resolveSkillPayload(s);
+          if (skillId) {
+            await client.query(
+              `INSERT INTO project_skills (project_id, skill_id, importance) VALUES ($1, $2, $3)`,
+              [id, skillId, importance]
+            );
+          }
         }
       }
 
