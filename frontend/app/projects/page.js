@@ -38,7 +38,8 @@ function StarRating({ value = 4.5 }) {
 
 /* ── Engineer card ── */
 function EngineerCard({ eng }) {
-  const initials = (eng.name || 'U').split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+  const displayName = eng.full_name || eng.name || 'Engineer';
+  const initials = displayName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) || 'U';
   const score = eng.match_score || Math.floor(Math.random() * 30 + 65);
   const rating = (3.5 + Math.random() * 1.5).toFixed(1);
   return (
@@ -48,7 +49,7 @@ function EngineerCard({ eng }) {
           {initials}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 2 }}>{eng.name || 'Engineer'}</div>
+          <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 2 }}>{displayName}</div>
           <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>{eng.institution || 'Independent Engineer'}</div>
           <StarRating value={parseFloat(rating)} />
         </div>
@@ -174,10 +175,10 @@ export default function ProjectsPage() {
   async function loadEngineers() {
     setLoading(true);
     try {
-      /* Use AI match endpoint — try first project or fallback to profile */
-      const { data } = await api.get('/users/profile');
-      /* Build mock engineers from profile data for now */
-      setEngineers([data.profile]);
+      const params = new URLSearchParams();
+      if (search) params.set('search', search);
+      const { data } = await api.get(`/users/engineers?${params}`);
+      setEngineers(data.engineers || []);
     } catch { setEngineers([]); }
     finally { setLoading(false); }
   }

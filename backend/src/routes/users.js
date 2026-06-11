@@ -106,4 +106,66 @@ router.put('/profile', async (req, res) => {
   }
 });
 
+// ─────────────────────────────────────────────
+// GET /api/users/engineers
+// Lists all users with their assigned skills.
+// Query: search? (filters by name, institution, or skill name)
+// Used by the Engineers tab on the projects discovery page.
+// ─────────────────────────────────────────────
+router.get('/engineers', async (req, res) => {
+  try {
+    const { search } = req.query;
+
+    let query;
+    let values;
+
+    if (search && search.trim()) {
+      const pattern = `%${search.trim()}%`;
+      query = `
+        SELECT DISTINCT
+          u.id, u.full_name, u.institution, u.bio, u.avatar_url, u.created_at,
+          COALESCE(
+            json_agg(
+              json_build_object('id', s.id, 'name', s.name, 'category', s.category, 'level', us.level)
+            ) FILTER (WHERE s.id IS NOT NULL),
+            '[]'
+          ) AS skills
+        FROM users u
+        LEFT JOIN user_skills us ON us.user_id = u.id
+        LEFT JOIN skills s ON s.id = us.skill_id
+        WHERE
+          u.full_name ILIKE $1
+          OR u.institution ILIKE $1
+          OR s.name ILIKE $1
+        GROUP BY u.id
+        ORDER BY u.full_name ASC
+        LIMIT 50`;
+      values = [pattern];
+    } else {
+      query = `
+        SELECT
+          u.id, u.full_name, u.institution, u.bio, u.avatar_url, u.created_at,
+          COALESCE(
+            json_agg(
+              json_build_object('id', s.id, 'name', s.name, 'category', s.category, 'level', us.level)
+            ) FILTER (WHERE s.id IS NOT NULL),
+            '[]'
+          ) AS skills
+        FROM users u
+        LEFT JOIN user_skills us ON us.user_id = u.id
+        LEFT JOIN skills s ON s.id = us.skill_id
+        GROUP BY u.id
+        ORDER BY u.full_name ASC
+        LIMIT 50`;
+      values = [];
+    }
+
+    const result = await pool.query(query, values);
+    return res.status(200).json({ engineers: result.rows });
+  } catch (err) {
+    console.error('GET /users/engineers error:', err.message);
+    return res.status(500).json({ error: 'Failed to fetch engineers: ' + err.message });
+  }
+});
+
 module.exports = router;
