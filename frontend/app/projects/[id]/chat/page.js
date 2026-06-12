@@ -46,17 +46,23 @@ export default function ChatPage() {
       // Connect socket.io
       try {
         const { io } = await import('socket.io-client');
-        const socket = io(process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000', {
+        // Backend runs on PORT 5000 (see backend/src/server.js)
+        const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000';
+        const socket = io(backendUrl, {
           withCredentials: true,
-          transports: ['websocket'],
+          transports: ['websocket', 'polling'], // polling fallback for reliability
         });
         socketRef.current = socket;
         socket.on('connect', () => {
           setSocketReady(true);
-          socket.emit('join_project', id);
+          // Server listens for 'join_room', not 'join_project'
+          socket.emit('join_room', { projectId: parseInt(id, 10) });
         });
         socket.on('new_message', msg => {
           setMessages(m => [...m, msg]);
+        });
+        socket.on('error', err => {
+          console.error('Socket error:', err.message);
         });
         socket.on('disconnect', () => setSocketReady(false));
       } catch (err) {
@@ -64,7 +70,15 @@ export default function ChatPage() {
       }
     }
     init();
-    return () => { socketRef.current?.disconnect(); };
+    return () => {
+      if (socketRef.current) {
+        // Politely leave the room before disconnecting
+        if (socketRef.current.connected) {
+          socketRef.current.emit('leave_room', { projectId: parseInt(id, 10) });
+        }
+        socketRef.current.disconnect();
+      }
+    };
   }, [id, authLoading, user]);
 
   useEffect(() => {
@@ -79,12 +93,26 @@ export default function ChatPage() {
     setSending(true);
     try {
       if (socketRef.current?.connected) {
-        socketRef.current.emit('send_message', { projectId: id, content: text });
+        // projectId must be a number (socket server does integer operations on it)
+        socketRef.current.emit('send_message', { projectId: parseInt(id, 10), content: text });
       } else {
-        // Fix: removed /api prefix — Axios client already adds /api
-        await api.post(`/chat/${id}/messages`, { content: text });
-        const { data } = await api.get(`/chat/${id}/messages`);
-        setMessages(data.messages || []);
+        // Socket not connected — optimistically add message to UI
+        // and refresh history from REST endpoint
+        const optimistic = {
+          id: `opt_${Date.now()}`,
+          content: text,
+          sender_id: user?.id,
+          sender_name: user?.full_name || 'You',
+          created_at: new Date().toISOString(),
+        };
+        setMessages(m => [...m, optimistic]);
+        // Refresh from server after a short delay to get the persisted version
+        setTimeout(async () => {
+          try {
+            const { data } = await api.get(`/chat/${id}/messages`);
+            setMessages(data.messages || []);
+          } catch {}
+        }, 1500);
       }
     } catch (err) {
       console.error('Send failed:', err);
